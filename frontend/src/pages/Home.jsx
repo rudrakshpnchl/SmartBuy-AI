@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { AlertTriangle, FilterX } from 'lucide-react'
+import { AlertTriangle, FilterX, Tag } from 'lucide-react'
 import { useSearch } from '../hooks/useSearch'
 import HeroHeader from '../components/HeroHeader'
 import SearchBar from '../components/SearchBar'
@@ -54,13 +54,23 @@ export default function Home() {
     }
   }, [result]) // reset when new result comes
 
+  // Detect if any filters are actively narrowing down results
+  const filtersActive = useMemo(() => {
+    if (filters.minRating > 0) return true
+    if (filters.inStockOnly) return true
+    if (filters.priceRange.min !== '') return true
+    if (filters.priceRange.max !== '') return true
+    if (availableSources.length > 0 && Object.values(filters.sources).some(v => !v)) return true
+    return false
+  }, [filters, availableSources])
+
   // Compute filtered & sorted alternatives
   const filteredAlternatives = useMemo(() => {
     if (!result?.results) return []
 
     // 1. Filter
     let filtered = result.results.filter((product) => {
-      // Exclude best pick (handled separately)
+      // Exclude AI best pick entirely from this list to prevent duplication
       if (result.best && product.title === result.best.title && product.url === result.best.url) {
         return false
       }
@@ -87,6 +97,18 @@ export default function Home() {
 
     return filtered
   }, [result, filters, sortOrder])
+
+  // Extract the absolute best-priced product from active filters
+  const displayBestPricePick = useMemo(() => {
+    if (!filtersActive || filteredAlternatives.length === 0) return null
+    return filteredAlternatives.reduce((min, p) => p.price < min.price ? p : min, filteredAlternatives[0])
+  }, [filteredAlternatives, filtersActive])
+
+  // Remaining grid minus the selected best price pick (to avoid rendering twice)
+  const finalGridAlternatives = useMemo(() => {
+    if (!displayBestPricePick) return filteredAlternatives
+    return filteredAlternatives.filter(p => p.url !== displayBestPricePick.url || p.title !== displayBestPricePick.title)
+  }, [filteredAlternatives, displayBestPricePick])
 
   // Check if AI Best Pick matches current filters
   const showBestPick = useMemo(() => {
@@ -125,7 +147,7 @@ export default function Home() {
         }}
       />
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 py-12 sm:py-16">
+      <div className="relative z-10 max-w-[1400px] mx-auto px-4 py-12 sm:py-16">
         {/* Hero */}
         <HeroHeader />
 
@@ -215,24 +237,42 @@ export default function Home() {
                   </section>
                 )}
 
+                {/* Best Filtered Value Highlight */}
+                {displayBestPricePick && (
+                  <section className="animate-fade-up" style={{ animationDelay: '100ms' }}>
+                    <p className="text-xs text-emerald-400 font-mono uppercase tracking-wider mb-3 flex items-center gap-2">
+                      <span className="inline-block w-4 h-px bg-emerald-400" />
+                      Lowest Price Matching Filters
+                    </p>
+                    <div className="max-w-md">
+                      <ProductCard
+                        product={displayBestPricePick}
+                        rank={"$" /* arbitrary rank icon replacement or string for best price */}
+                        isBest={false} // Use false to keep it visually distinct from AI best pick, or modify styling
+                        style={{ borderColor: '#34d399', boxShadow: '0 0 20px rgba(52, 211, 153, 0.1)' }}
+                      />
+                    </div>
+                  </section>
+                )}
+
                 {/* Filtered Ranked Alternatives grid */}
                 <section>
                   <div className="flex items-center justify-between mb-4">
                     <p className="text-xs text-text-muted font-mono uppercase tracking-wider flex items-center gap-2">
                       <span className="inline-block w-4 h-px bg-border" />
-                      Ranked Alternatives ({filteredAlternatives.length})
+                      Ranked Alternatives ({finalGridAlternatives.length})
                     </p>
                   </div>
                   
-                  {filteredAlternatives.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {filteredAlternatives.map((product, i) => (
+                  {finalGridAlternatives.length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                      {finalGridAlternatives.map((product, i) => (
                         <ProductCard
-                          key={product.title + i}
+                          key={product.url + i}
                           product={product}
-                          rank={i + (showBestPick ? 2 : 1)}
+                          rank={i + (showBestPick ? 2 : 1) + (displayBestPricePick ? 1 : 0)}
                           isBest={false}
-                          style={{ animationDelay: `${i * 40}ms` }}
+                          style={{ animationDelay: `${i * 30}ms` }}
                         />
                       ))}
                     </div>
