@@ -1,5 +1,5 @@
 """
-shopping_search.py - Live product search via SerpApi Google Shopping.
+shopping_search.py - Live product search and autocomplete via SerpApi.
 Falls back to the local mock catalog when the API is unavailable.
 """
 import logging
@@ -42,6 +42,44 @@ def _parse_int(value: Any) -> int:
     if parsed is None:
         return 0
     return max(0, int(parsed))
+
+
+def _normalize_text(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _matches_query_prefix(value: str, query: str) -> bool:
+    normalized_value = _normalize_text(value).lower()
+    normalized_query = _normalize_text(query).lower()
+    if not normalized_query:
+        return False
+
+    if normalized_value.startswith(normalized_query):
+        return True
+
+    return any(token.startswith(normalized_query) for token in re.findall(r"[a-z0-9]+", normalized_value))
+
+
+def _dedupe_suggestions(values: List[str], limit: int) -> List[str]:
+    suggestions = []
+    seen = set()
+
+    for value in values:
+        normalized = _normalize_text(value)
+        if not normalized:
+            continue
+
+        key = normalized.lower()
+        if key in seen:
+            continue
+
+        suggestions.append(normalized)
+        seen.add(key)
+
+        if len(suggestions) >= limit:
+            break
+
+    return suggestions
 
 
 def _detect_currency(price_text: str, default: str = "INR") -> str:
@@ -109,6 +147,86 @@ def _normalize_result(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "thumbnail": str(result.get("thumbnail", "")).strip(),
         "snippet": str(result.get("snippet", "")).strip(),
     }
+
+
+def derive_title_suggestions(query: str, products: List[Dict[str, Any]], limit: int = 6) -> List[str]:
+    """
+    Build lightweight suggestions from product titles without any hardcoded list.
+    """
+    normalized_query = _normalize_text(query)
+    if not normalized_query:
+        return []
+
+    normalized_query_lower = normalized_query.lower()
+    candidates = []
+    for product in products:
+        title = _normalize_text(product.get("title"))
+        if not title:
+            continue
+
+        words = title.split()
+        for index in range(len(words)):
+            leading_word = _normalize_text(words[index]).lower()
+            if not leading_word.startswith(normalized_query_lower):
+                continue
+
+            candidate = " ".join(words[index:index + 3]).strip(" -_,")
+            if candidate:
+                candidates.append(candidate)
+                break
+
+    return _dedupe_suggestions(candidates, limit)
+
+
+async def get_autocomplete_suggestions(query: str, limit: int = 6) -> Dict[str, Any]:
+    """
+    Fetch live Google autocomplete suggestions from SerpApi.
+    """
+    api_key = _get_serpapi_api_key()
+    if not api_key or api_key in PLACEHOLDER_API_KEYS:
+        logger.info("SERPAPI_API_KEY not configured; skipping autocomplete search.")
+        return {"suggestions": [], "source": "unavailable", "error": "SerpApi key not configured"}
+
+    params = {
+        "engine": "google_autocomplete",
+        "q": query,
+        "api_key": api_key,
+        "gl": os.getenv("SERPAPI_GL", DEFAULT_COUNTRY),
+        "hl": os.getenv("SERPAPI_HL", DEFAULT_LANGUAGE),
+        "client": "gws-wiz",
+        "no_cache": "false",
+    }
+
+    timeout = httpx.Timeout(connect=3.0, read=10.0, write=8.0, pool=5.0)
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(SERPAPI_ENDPOINT, params=params)
+            response.raise_for_status()
+
+        payload = response.json()
+        raw_suggestions = payload.get("suggestions", [])
+        if not isinstance(raw_suggestions, list):
+            logger.warning("SerpApi autocomplete response did not contain a suggestions list.")
+            return {"suggestions": [], "source": "unavailable", "error": "Invalid SerpApi response"}
+
+        suggestions = []
+        for item in raw_suggestions:
+            value = item.get("value") if isinstance(item, dict) else item
+            if _matches_query_prefix(str(value or ""), query):
+                suggestions.append(str(value))
+
+        suggestions = _dedupe_suggestions(suggestions, limit)
+        logger.info("SerpApi returned %d autocomplete suggestions for '%s'", len(suggestions), query)
+        return {"suggestions": suggestions, "source": "google-autocomplete", "error": None}
+    except httpx.HTTPStatusError as exc:
+        logger.error("SerpApi autocomplete HTTP error %s: %s", exc.response.status_code, exc.response.text)
+    except httpx.RequestError as exc:
+        logger.error("SerpApi autocomplete request error: %s", exc)
+    except ValueError as exc:
+        logger.error("Failed to parse SerpApi autocomplete response: %s", exc)
+
+    return {"suggestions": [], "source": "unavailable", "error": "SerpApi autocomplete failed"}
 
 
 async def search_google_shopping(query: str, limit: int = 8) -> Dict[str, Any]:

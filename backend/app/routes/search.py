@@ -7,7 +7,7 @@ import logging
 import time
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, field_validator
 
 from app.services.currency import DEFAULT_CURRENCY, get_usd_to_inr_rate
@@ -15,7 +15,11 @@ from app.services.fallback import get_mock_products
 from app.services.normalizer import normalize_products
 from app.services.matcher import match_products
 from app.services.ai_agent import run_ai_decision
-from app.services.shopping_search import search_google_shopping
+from app.services.shopping_search import (
+    derive_title_suggestions,
+    get_autocomplete_suggestions,
+    search_google_shopping,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -51,9 +55,39 @@ class SearchResponse(BaseModel):
     took_ms: int
 
 
+class SuggestionResponse(BaseModel):
+    query: str
+    suggestions: list[str]
+    source: str
+
+
 # ---------------------------------------------------------------------------
 # Pipeline
 # ---------------------------------------------------------------------------
+
+@router.get("/suggestions", response_model=SuggestionResponse)
+async def suggestions(
+    q: str = Query(..., min_length=1, max_length=200),
+    limit: int = Query(6, ge=1, le=10),
+) -> SuggestionResponse:
+    query = q.strip()
+    if not query:
+        return SuggestionResponse(query="", suggestions=[], source="none")
+
+    autocomplete_result = await get_autocomplete_suggestions(query, limit=limit)
+    suggestion_values = autocomplete_result["suggestions"]
+    suggestion_source = autocomplete_result["source"]
+
+    if not suggestion_values:
+        suggestion_values = derive_title_suggestions(query, get_mock_products(), limit=limit)
+        if suggestion_values:
+            suggestion_source = "catalog-derived"
+
+    return SuggestionResponse(
+        query=query,
+        suggestions=suggestion_values,
+        source=suggestion_source,
+    )
 
 @router.post("/search", response_model=SearchResponse)
 async def search(body: SearchRequest) -> SearchResponse:

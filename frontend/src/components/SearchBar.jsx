@@ -1,15 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
 import { Search, Sparkles } from 'lucide-react'
-
-const SUGGESTIONS = [
-  'iPhone 13', 'Sony WH-1000XM5', 'MacBook Air M2',
-  'Samsung Galaxy S22', 'Nike Air Max 270', 'LG OLED TV'
-]
+import { useSuggestions } from '../hooks/useSuggestions'
 
 export default function SearchBar({ onSearch, loading }) {
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(-1)
   const inputRef = useRef(null)
+  const { suggestions, loading: suggestionsLoading } = useSuggestions(query, focused && !loading)
+  const showSuggestions = focused && query.trim() && (suggestionsLoading || suggestions.length > 0)
 
   useEffect(() => {
     const handler = (e) => {
@@ -22,15 +21,55 @@ export default function SearchBar({ onSearch, loading }) {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    if (query.trim() && !loading) onSearch(query)
+  useEffect(() => {
+    setActiveIndex(-1)
+  }, [query, suggestions])
+
+  const submitSearch = (value) => {
+    const nextQuery = value.trim()
+    if (!nextQuery || loading) return
+    setQuery(nextQuery)
+    onSearch(nextQuery)
+    setFocused(false)
+    setActiveIndex(-1)
   }
 
-  const handleSuggestion = (s) => {
-    setQuery(s)
-    onSearch(s)
-    setFocused(false)
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    submitSearch(query)
+  }
+
+  const handleSuggestion = (suggestion) => {
+    submitSearch(suggestion)
+  }
+
+  const handleKeyDown = (e) => {
+    if (!suggestions.length) return
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveIndex((current) => (
+        current >= suggestions.length - 1 ? 0 : current + 1
+      ))
+    }
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIndex((current) => (
+        current <= 0 ? suggestions.length - 1 : current - 1
+      ))
+    }
+
+    if (e.key === 'Enter' && activeIndex >= 0) {
+      e.preventDefault()
+      handleSuggestion(suggestions[activeIndex])
+    }
+
+    if (e.key === 'Escape') {
+      setActiveIndex(-1)
+      setFocused(false)
+      inputRef.current?.blur()
+    }
   }
 
   return (
@@ -60,6 +99,7 @@ export default function SearchBar({ onSearch, loading }) {
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => setFocused(true)}
             onBlur={() => setTimeout(() => setFocused(false), 150)}
+            onKeyDown={handleKeyDown}
             placeholder="Search any product online…"
             disabled={loading}
             className="
@@ -94,24 +134,34 @@ export default function SearchBar({ onSearch, loading }) {
       </form>
 
       {/* Suggestions dropdown */}
-      {focused && !query && (
+      {showSuggestions && (
         <div className="absolute top-full left-0 right-0 mt-2 py-2 rounded-2xl
           bg-surface border border-border shadow-card z-50 animate-fade-up">
           <p className="px-4 py-1.5 text-xs text-text-muted font-mono uppercase tracking-wider">
-            Try searching for
+            {suggestionsLoading && !suggestions.length ? 'Finding suggestions' : 'Suggestions'}
           </p>
-          {SUGGESTIONS.map((s) => (
-            <button
-              key={s}
-              onClick={() => handleSuggestion(s)}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-left
-                text-text-secondary hover:text-text-primary hover:bg-void
-                transition-colors text-sm font-body"
-            >
-              <Sparkles size={14} className="text-accent flex-shrink-0" />
-              {s}
-            </button>
-          ))}
+          {suggestionsLoading && !suggestions.length ? (
+            <div className="px-4 py-3 text-sm text-text-muted font-body">
+              Looking for products that match "{query.trim()}"...
+            </div>
+          ) : (
+            suggestions.map((suggestion, index) => (
+              <button
+                key={suggestion}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => handleSuggestion(suggestion)}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 text-left
+                  transition-colors text-sm font-body ${
+                    activeIndex === index
+                      ? 'bg-void text-text-primary'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-void'
+                  }`}
+              >
+                <Sparkles size={14} className="text-accent flex-shrink-0" />
+                {suggestion}
+              </button>
+            ))
+          )}
         </div>
       )}
     </div>
