@@ -22,6 +22,11 @@ def load_mock_data() -> List[Dict[str, Any]]:
         if not isinstance(products, list):
             logger.error("mock_data.json 'products' payload must be a list.")
             return []
+            
+        for p in products:
+            if "currency" not in p:
+                p["currency"] = "USD"
+                
         return products
     except FileNotFoundError:
         logger.error("mock_data.json not found at %s", MOCK_DATA_PATH)
