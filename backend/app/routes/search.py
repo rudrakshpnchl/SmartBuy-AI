@@ -62,7 +62,7 @@ async def search(body: SearchRequest) -> SearchResponse:
     logger.info("Search request: '%s'", query)
 
     # ── Step 1: Search live Google Shopping results ──────────────────────────
-    search_result = await search_google_shopping(query, limit=8)
+    search_result = await search_google_shopping(query, limit=60)
     raw_products = search_result["products"]
     data_source = search_result["source"]
 
@@ -81,7 +81,7 @@ async def search(body: SearchRequest) -> SearchResponse:
         raise HTTPException(status_code=500, detail="Products could not be processed.")
 
     # ── Step 4: Match (rank only relevant products) ─────────────────────────
-    top_products = match_products(normalized, query, top_n=5)
+    top_products = match_products(normalized, query, top_n=25)
     if not top_products:
         raise HTTPException(status_code=404, detail="No matching products found for this query.")
 

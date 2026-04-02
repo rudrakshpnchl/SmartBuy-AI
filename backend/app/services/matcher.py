@@ -46,7 +46,8 @@ def _relevance_score(
         price_score = max(0.0, min(1.0, price_score))
 
     # Weighted composite
-    score = overlap * 0.50 + rating_norm * 0.35 + price_score * 0.15
+    # Heavily favor keyword overlap to ensure results are highly relevant to the search query
+    score = overlap * 0.85 + rating_norm * 0.10 + price_score * 0.05
     return round(score, 4)
 
 
@@ -72,7 +73,7 @@ def match_products(
     for p in products:
         title_tokens = _tokenize(p.get("title", ""))
         overlap = len(query_tokens & title_tokens) / len(query_tokens) if title_tokens else 0.0
-        if overlap <= 0:
+        if overlap < 0.50:
             continue
 
         candidates.append(dict(p))

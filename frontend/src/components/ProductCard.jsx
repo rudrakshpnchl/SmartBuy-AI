@@ -40,7 +40,7 @@ export default function ProductCard({ product, rank, isBest, style }) {
     <article
       style={style}
       className={`
-        relative rounded-2xl border p-5 card-hover animate-fade-up
+        relative rounded-2xl border p-3 card-hover animate-fade-up
         ${isBest
           ? 'border-accent bg-gradient-to-br from-surface via-surface to-[#1a1830] shadow-glow-accent'
           : 'border-border bg-surface'
@@ -67,32 +67,32 @@ export default function ProductCard({ product, rank, isBest, style }) {
 
       {/* Header */}
       {thumbnail && (
-        <div className="mb-4 overflow-hidden rounded-xl border border-border bg-void/60">
+        <div className="mb-2 overflow-hidden rounded-xl border border-border bg-void/60">
           <img
             src={thumbnail}
             alt={title}
-            className="h-40 w-full object-cover"
+            className="h-32 w-full object-cover"
             loading="lazy"
             referrerPolicy="no-referrer"
           />
         </div>
       )}
 
-      <div className="mt-1 mb-4">
-        <p className="text-xs text-text-muted font-mono uppercase tracking-wider mb-1.5">{source}</p>
-        <h3 className="font-display font-semibold text-text-primary text-base leading-snug line-clamp-2">
+      <div className="mt-1 mb-2">
+        <p className="text-[10px] text-text-muted font-mono uppercase tracking-wider mb-1 mt-1">{source}</p>
+        <h3 className="font-display font-semibold text-text-primary text-sm leading-snug line-clamp-2">
           {title}
         </h3>
         {snippet && (
-          <p className="mt-2 text-xs text-text-muted leading-relaxed line-clamp-2">
+          <p className="mt-1 text-[10px] text-text-muted leading-relaxed line-clamp-2">
             {snippet}
           </p>
         )}
       </div>
 
       {/* Price */}
-      <div className="mb-3">
-        <span className={`text-2xl font-display font-bold ${isBest ? 'text-gold' : 'text-text-primary'}`}>
+      <div className="mb-2">
+        <span className={`text-xl font-display font-bold ${isBest ? 'text-gold' : 'text-text-primary'}`}>
           {formatPrice(price, currency)}
         </span>
       </div>
@@ -141,7 +141,7 @@ export default function ProductCard({ product, rank, isBest, style }) {
         target="_blank"
         rel="noopener noreferrer"
         className={`
-          flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-display font-semibold
+          flex items-center justify-center gap-2 w-full py-2 rounded-lg text-sm font-display font-semibold
           transition-all duration-200 active:scale-95
           ${isBest
             ? 'bg-accent text-white hover:bg-accent-glow'
