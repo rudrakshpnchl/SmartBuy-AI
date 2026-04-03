@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { useAuth } from '../context/AuthContext'
 
 const API_BASE = '/api'
 
@@ -25,12 +26,14 @@ function normalizeErrorMessage(payload, status) {
 }
 
 export function useSearch() {
+  const { currentUser } = useAuth()
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
 
   const search = useCallback(async (query) => {
-    if (!query.trim()) return
+    const trimmedQuery = query.trim()
+    if (!trimmedQuery) return
     setLoading(true)
     setResult(null)
     setError(null)
@@ -39,7 +42,7 @@ export function useSearch() {
       const res = await fetch(`${API_BASE}/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query.trim() }),
+        body: JSON.stringify({ query: trimmedQuery }),
       })
 
       if (!res.ok) {
@@ -49,12 +52,24 @@ export function useSearch() {
 
       const data = await res.json()
       setResult(data)
+
+      if (currentUser?.uid) {
+        const token = await currentUser.getIdToken()
+        await fetch(`${API_BASE}/history`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ query: trimmedQuery }),
+        }).catch(() => {})
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [currentUser])
 
   return { search, loading, result, error }
 }

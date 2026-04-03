@@ -229,7 +229,7 @@ async def get_autocomplete_suggestions(query: str, limit: int = 6) -> Dict[str, 
     return {"suggestions": [], "source": "unavailable", "error": "SerpApi autocomplete failed"}
 
 
-async def search_google_shopping(query: str, limit: int = 8) -> Dict[str, Any]:
+async def search_google_shopping(query: str, limit: int = 60) -> Dict[str, Any]:
     """
     Search SerpApi Google Shopping and return normalized raw product rows.
     """
@@ -241,6 +241,7 @@ async def search_google_shopping(query: str, limit: int = 8) -> Dict[str, Any]:
     params = {
         "engine": "google_shopping",
         "q": query,
+        "num": min(max(limit, 1), 100),
         "api_key": api_key,
         "gl": os.getenv("SERPAPI_GL", DEFAULT_COUNTRY),
         "hl": os.getenv("SERPAPI_HL", DEFAULT_LANGUAGE),
@@ -260,6 +261,12 @@ async def search_google_shopping(query: str, limit: int = 8) -> Dict[str, Any]:
             logger.warning("SerpApi response did not contain a shopping_results list.")
             return {"products": [], "source": "unavailable", "error": "Invalid SerpApi response"}
 
+        logger.info(
+            "SerpApi raw shopping_results count for '%s': %d",
+            query,
+            len(shopping_results),
+        )
+
         normalized_products = []
         for result in shopping_results:
             product = _normalize_result(result)
@@ -268,7 +275,13 @@ async def search_google_shopping(query: str, limit: int = 8) -> Dict[str, Any]:
             if len(normalized_products) >= limit:
                 break
 
-        logger.info("SerpApi returned %d normalized shopping results for '%s'", len(normalized_products), query)
+        missing_thumbnails = sum(1 for product in normalized_products if not product.get("thumbnail"))
+        logger.info(
+            "SerpApi returned %d normalized shopping results for '%s' (%d without thumbnails)",
+            len(normalized_products),
+            query,
+            missing_thumbnails,
+        )
         return {"products": normalized_products, "source": "google-shopping", "error": None}
     except httpx.HTTPStatusError as exc:
         logger.error("SerpApi HTTP error %s: %s", exc.response.status_code, exc.response.text)

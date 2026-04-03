@@ -4,11 +4,29 @@ Ensures all downstream services receive clean, typed data.
 """
 import re
 import logging
+from urllib.parse import quote
 from typing import List, Dict, Any, Optional
 
 from app.services.currency import DEFAULT_CURRENCY, convert_usd_to_inr
 
 logger = logging.getLogger(__name__)
+
+
+def _placeholder_thumbnail(title: str) -> str:
+    label = quote((title or "Product")[:48])
+    svg = (
+        "<svg xmlns='http://www.w3.org/2000/svg' width='640' height='640' viewBox='0 0 640 640'>"
+        "<defs><linearGradient id='g' x1='0' x2='1' y1='0' y2='1'>"
+        "<stop stop-color='#111827'/><stop offset='1' stop-color='#1f2937'/>"
+        "</linearGradient></defs>"
+        "<rect width='640' height='640' rx='32' fill='url(#g)'/>"
+        "<circle cx='320' cy='230' r='96' fill='#374151'/>"
+        "<rect x='170' y='360' width='300' height='30' rx='15' fill='#6b7280'/>"
+        "<rect x='140' y='415' width='360' height='22' rx='11' fill='#4b5563'/>"
+        f"<text x='320' y='520' text-anchor='middle' font-family='Arial' font-size='28' fill='#e5e7eb'>{label}</text>"
+        "</svg>"
+    )
+    return f"data:image/svg+xml;utf8,{svg}"
 
 def _clean_text(value: Any, default: str = "") -> str:
     """Normalize arbitrary scalar input to a compact string."""
@@ -113,7 +131,7 @@ def normalize_product(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "delivery": _clean_text(raw.get("delivery", "N/A"), default="N/A"),
         "reviews_count": _safe_int(raw.get("reviews_count", 0)),
         "in_stock": _coerce_bool(raw.get("in_stock", True), default=True),
-        "thumbnail": _clean_text(raw.get("thumbnail", ""), default=""),
+        "thumbnail": _clean_text(raw.get("thumbnail", ""), default=_placeholder_thumbnail(title)),
         "snippet": _clean_text(raw.get("snippet", ""), default=""),
         # Computed score used by matcher (higher = better)
         "_score": round(rating * 20 - price_inr * 0.0001, 4),

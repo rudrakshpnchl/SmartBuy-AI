@@ -1,4 +1,5 @@
-import { ExternalLink, Star, Truck, Package, ShieldCheck } from 'lucide-react'
+import { useState } from 'react'
+import { ExternalLink, ImageIcon, Star, Truck, Package, ShieldCheck } from 'lucide-react'
 
 const formatPrice = (amount, currency = 'INR') =>
   new Intl.NumberFormat('en-IN', {
@@ -31,10 +32,12 @@ function StarRating({ rating }) {
 }
 
 export default function ProductCard({ product, rank, isBest, style }) {
+  const [imageMissing, setImageMissing] = useState(false)
   const {
     title, price, currency, rating, source, url,
     delivery, reviews_count, in_stock, relevance_score, thumbnail, snippet
   } = product
+  const showImage = Boolean(thumbnail) && !imageMissing
 
   return (
     <article
@@ -66,15 +69,30 @@ export default function ProductCard({ product, rank, isBest, style }) {
       )}
 
       {/* Header */}
+<<<<<<< HEAD
       {thumbnail && (
         <div className="mb-2 overflow-hidden rounded-xl border border-border bg-void/60">
+=======
+      {showImage ? (
+        <div className="mb-4 overflow-hidden rounded-xl border border-border bg-void/60">
+>>>>>>> 51c6b14 (SmartBuy AI — history, feed, personalized suggestions, 40-result search)
           <img
             src={thumbnail}
             alt={title}
             className="h-32 w-full object-cover"
             loading="lazy"
             referrerPolicy="no-referrer"
+            onError={() => setImageMissing(true)}
           />
+        </div>
+      ) : (
+        <div className="mb-4 flex h-40 items-center justify-center rounded-xl border border-dashed border-border bg-void/60">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <ImageIcon size={22} className="text-text-muted" />
+            <p className="text-xs font-mono uppercase tracking-wider text-text-muted">
+              Image Unavailable
+            </p>
+          </div>
         </div>
       )}
 

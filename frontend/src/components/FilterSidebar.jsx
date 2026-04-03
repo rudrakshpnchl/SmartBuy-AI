@@ -4,8 +4,10 @@ export default function FilterSidebar({
   filters,
   sort,
   availableSources,
+  currency = 'INR',
   onChangeFilter,
   onChangeSort,
+  onResetFilters,
 }) {
   const handleSourceChange = (source) => {
     const nextSources = { ...filters.sources }
@@ -18,6 +20,16 @@ export default function FilterSidebar({
       ...filters,
       priceRange: { ...filters.priceRange, [field]: value }
     })
+  }
+
+  const enabledSourceCount = availableSources.filter((source) => filters.sources[source]).length
+
+  const handleSetAllSources = (checked) => {
+    const nextSources = {}
+    availableSources.forEach((source) => {
+      nextSources[source] = checked
+    })
+    onChangeFilter({ ...filters, sources: nextSources })
   }
 
   return (
@@ -54,17 +66,47 @@ export default function FilterSidebar({
 
       {/* Filters Section */}
       <div className="bg-surface rounded-2xl border border-border p-5">
-        <div className="flex items-center gap-2 mb-4 text-text-primary font-display font-semibold">
-          <SlidersHorizontal size={16} className="text-accent" />
-          <h3>Filters</h3>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-text-primary font-display font-semibold">
+            <SlidersHorizontal size={16} className="text-accent" />
+            <h3>Filters</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onResetFilters}
+            className="text-xs font-mono uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
+          >
+            Reset
+          </button>
         </div>
 
         {/* Source Filter */}
         {availableSources.length > 0 && (
           <div className="mb-6">
-            <div className="flex items-center gap-2 mb-3 text-text-secondary text-sm font-semibold">
-              <Tag size={14} />
-              <h4>Store</h4>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-text-secondary text-sm font-semibold">
+                <Tag size={14} />
+                <h4>Store</h4>
+              </div>
+              <span className="text-xs text-text-muted font-mono">
+                {enabledSourceCount}/{availableSources.length}
+              </span>
+            </div>
+            <div className="mb-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleSetAllSources(true)}
+                className="rounded-lg border border-border px-2.5 py-1 text-xs text-text-secondary transition-colors hover:text-text-primary"
+              >
+                Select all
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetAllSources(false)}
+                className="rounded-lg border border-border px-2.5 py-1 text-xs text-text-secondary transition-colors hover:text-text-primary"
+              >
+                Clear all
+              </button>
             </div>
             <div className="space-y-2 max-h-40 overflow-y-auto">
               {availableSources.map((source) => (
@@ -87,7 +129,7 @@ export default function FilterSidebar({
         {/* Price Range Filter */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-3 text-text-secondary text-sm font-semibold">
-            <span className="text-accent">$</span> {/* Using a generic icon approach, actual currency depends on result */}
+            <span className="text-accent">{currency === 'INR' ? '₹' : currency}</span>
             <h4>Price Range</h4>
           </div>
           <div className="flex items-center gap-2">

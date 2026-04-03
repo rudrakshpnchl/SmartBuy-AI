@@ -3,6 +3,7 @@ import { AlertTriangle, FilterX, Tag } from 'lucide-react'
 import { useSearch } from '../hooks/useSearch'
 import HeroHeader from '../components/HeroHeader'
 import SearchBar from '../components/SearchBar'
+import RecentSearches from '../components/RecentSearches'
 import ProductCard from '../components/ProductCard'
 import ExplanationBox from '../components/ExplanationBox'
 import LoadingSkeleton from '../components/LoadingSkeleton'
@@ -10,6 +11,7 @@ import FilterSidebar from '../components/FilterSidebar'
 
 export default function Home() {
   const { search, loading, result, error } = useSearch()
+  const [recentSearchRefreshKey, setRecentSearchRefreshKey] = useState(0)
   
   const isMockSource = result && ['mock', 'fallback'].includes(result.data_source)
   const sourceLabel = isMockSource
@@ -27,6 +29,20 @@ export default function Home() {
     inStockOnly: false,
   })
 
+  const resetFilters = (sources = availableSources) => {
+    const initialSources = {}
+    sources.forEach((source) => {
+      initialSources[source] = true
+    })
+    setFilters({
+      sources: initialSources,
+      priceRange: { min: '', max: '' },
+      minRating: 0,
+      inStockOnly: false,
+    })
+    setSortOrder('relevance')
+  }
+
   // Extract available sources from results
   const availableSources = useMemo(() => {
     if (!result?.results) return []
@@ -38,22 +54,11 @@ export default function Home() {
   // Initialize sources to "all checked" when new results arrive
   useEffect(() => {
     if (availableSources.length > 0) {
-      const initialSources = {}
-      availableSources.forEach((s) => {
-        initialSources[s] = true
-      })
-      setFilters((prev) => ({
-        ...prev,
-        sources: initialSources,
-        // Reset other filters optionally on new search
-        priceRange: { min: '', max: '' },
-        minRating: 0,
-        inStockOnly: false,
-      }))
-      setSortOrder('relevance')
+      resetFilters(availableSources)
     }
   }, [result]) // reset when new result comes
 
+<<<<<<< HEAD
   // Detect if any filters are actively narrowing down results
   const filtersActive = useMemo(() => {
     if (filters.minRating > 0) return true
@@ -78,26 +83,44 @@ export default function Home() {
       if (Object.keys(filters.sources).length > 0 && !filters.sources[product.source]) return false
       if (filters.inStockOnly && !product.in_stock) return false
       if ((product.rating || 0) < filters.minRating) return false
+=======
+  const productPassesFilters = (product) => {
+    if (!product) return false
 
-      const price = product.price
-      if (filters.priceRange.min !== '' && price < Number(filters.priceRange.min)) return false
-      if (filters.priceRange.max !== '' && price > Number(filters.priceRange.max)) return false
+    const hasSourceFilters = Object.keys(filters.sources).length > 0
+    const selectedSources = Object.values(filters.sources).filter(Boolean).length
+    if (hasSourceFilters && selectedSources > 0 && !filters.sources[product.source]) return false
+    if (hasSourceFilters && selectedSources === 0) return false
+    if (filters.inStockOnly && !product.in_stock) return false
+    if ((product.rating || 0) < filters.minRating) return false
 
-      return true
-    })
+    const price = Number(product.price || 0)
+    const minPrice = filters.priceRange.min === '' ? null : Number(filters.priceRange.min)
+    const maxPrice = filters.priceRange.max === '' ? null : Number(filters.priceRange.max)
 
-    // 2. Sort
+    if (minPrice !== null && !Number.isNaN(minPrice) && price < minPrice) return false
+    if (maxPrice !== null && !Number.isNaN(maxPrice) && price > maxPrice) return false
+
+    return true
+  }
+
+  const filteredProducts = useMemo(() => {
+    if (!result?.results) return []
+
+    const filtered = result.results.filter(productPassesFilters)
+>>>>>>> 51c6b14 (SmartBuy AI — history, feed, personalized suggestions, 40-result search)
+
     filtered.sort((a, b) => {
       if (sortOrder === 'price_asc') return a.price - b.price
       if (sortOrder === 'price_desc') return b.price - a.price
       if (sortOrder === 'rating_desc') return (b.rating || 0) - (a.rating || 0)
-      // default: relevance
       return (b.relevance_score || 0) - (a.relevance_score || 0)
     })
 
     return filtered
   }, [result, filters, sortOrder])
 
+<<<<<<< HEAD
   // Extract the absolute best-priced product from active filters
   const displayBestPricePick = useMemo(() => {
     if (!filtersActive || filteredAlternatives.length === 0) return null
@@ -117,13 +140,28 @@ export default function Home() {
     if (Object.keys(filters.sources).length > 0 && !filters.sources[product.source]) return false
     if (filters.inStockOnly && !product.in_stock) return false
     if ((product.rating || 0) < filters.minRating) return false
+=======
+  const showBestPick = useMemo(
+    () => Boolean(result?.best && productPassesFilters(result.best)),
+    [result, filters],
+  )
+>>>>>>> 51c6b14 (SmartBuy AI — history, feed, personalized suggestions, 40-result search)
 
-    const price = product.price
-    if (filters.priceRange.min !== '' && price < Number(filters.priceRange.min)) return false
-    if (filters.priceRange.max !== '' && price > Number(filters.priceRange.max)) return false
+  const filteredAlternatives = useMemo(() => {
+    if (!filteredProducts.length) return []
+    if (!result?.best || !showBestPick) {
+      return filteredProducts
+    }
 
-    return true
-  }, [result, filters])
+    return filteredProducts.filter((product) => (
+      !(product.title === result.best.title && product.url === result.best.url)
+    ))
+  }, [filteredProducts, result, showBestPick])
+
+  const handleSearch = async (query) => {
+    await search(query)
+    setRecentSearchRefreshKey((current) => current + 1)
+  }
 
   return (
     <div className="min-h-screen bg-obsidian">
@@ -153,7 +191,12 @@ export default function Home() {
 
         {/* Search */}
         <div className="mb-10 max-w-4xl mx-auto">
-          <SearchBar onSearch={search} loading={loading} />
+          <SearchBar onSearch={handleSearch} loading={loading} />
+          <RecentSearches
+            onSearch={handleSearch}
+            refreshKey={recentSearchRefreshKey}
+            hidden={loading || Boolean(result)}
+          />
         </div>
 
         {/* Error state */}
@@ -200,8 +243,10 @@ export default function Home() {
                   filters={filters}
                   sort={sortOrder}
                   availableSources={availableSources}
+                  currency={result.currency || 'INR'}
                   onChangeFilter={setFilters}
                   onChangeSort={setSortOrder}
+                  onResetFilters={() => resetFilters()}
                 />
               </div>
 
@@ -262,6 +307,9 @@ export default function Home() {
                       <span className="inline-block w-4 h-px bg-border" />
                       Ranked Alternatives ({finalGridAlternatives.length})
                     </p>
+                    <span className="text-xs text-text-muted font-mono">
+                      Showing {filteredAlternatives.length} of {result.results.length}
+                    </span>
                   </div>
                   
                   {finalGridAlternatives.length > 0 ? (
@@ -285,16 +333,7 @@ export default function Home() {
                         Try adjusting your price range, lowering the minimum rating, or selecting more stores.
                       </p>
                       <button 
-                        onClick={() => {
-                          const initialSources = {}
-                          availableSources.forEach((s) => { initialSources[s] = true })
-                          setFilters({
-                            sources: initialSources,
-                            priceRange: { min: '', max: '' },
-                            minRating: 0,
-                            inStockOnly: false
-                          })
-                        }}
+                        onClick={() => resetFilters()}
                         className="mt-6 px-4 py-2 border border-border text-sm text-text-secondary hover:text-text-primary rounded-lg transition-colors"
                       >
                         Clear all filters

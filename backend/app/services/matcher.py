@@ -16,6 +16,11 @@ def _tokenize(text: str) -> set:
     return {t for t in tokens if t not in stop_words and len(t) > 1}
 
 
+def _word_tokens(tokens: set[str]) -> set[str]:
+    """Keep only tokens that contain at least one non-digit character."""
+    return {token for token in tokens if not token.isdigit()}
+
+
 def _relevance_score(
     product: Dict[str, Any],
     query_tokens: set,
@@ -54,7 +59,7 @@ def _relevance_score(
 def match_products(
     products: List[Dict[str, Any]],
     query: str,
-    top_n: int = 5,
+    top_n: int = 60,
 ) -> List[Dict[str, Any]]:
     """
     Score and rank products by relevance to the query.
@@ -68,15 +73,31 @@ def match_products(
     if not query_tokens:
         logger.info("No searchable keywords extracted from query '%s'", query)
         return []
+    query_word_tokens = _word_tokens(query_tokens)
 
     candidates = []
     for p in products:
         title_tokens = _tokenize(p.get("title", ""))
+<<<<<<< HEAD
         overlap = len(query_tokens & title_tokens) / len(query_tokens) if title_tokens else 0.0
         if overlap < 0.50:
+=======
+        if not title_tokens:
+>>>>>>> 51c6b14 (SmartBuy AI — history, feed, personalized suggestions, 40-result search)
             continue
 
-        candidates.append(dict(p))
+        word_overlap_count = len(query_word_tokens & _word_tokens(title_tokens))
+        overlap = len(query_tokens & title_tokens) / len(query_tokens)
+
+        # Avoid accidental matches driven only by numeric tokens like "15".
+        if query_word_tokens and word_overlap_count == 0:
+            continue
+
+        if overlap > 0:
+            product_copy = dict(p)
+            product_copy["_token_overlap"] = overlap
+            product_copy["_word_overlap"] = word_overlap_count
+            candidates.append(product_copy)
 
     if not candidates:
         logger.info("Matched 0 products (top 0 selected) for query '%s'", query)
@@ -93,8 +114,19 @@ def match_products(
         scored.append(product_copy)
 
     # Sort: relevance first, then rating as tiebreaker
-    scored.sort(key=lambda x: (x["relevance_score"], x.get("rating", 0)), reverse=True)
+    scored.sort(
+        key=lambda x: (
+            x.get("_word_overlap", 0),
+            x.get("_token_overlap", 0),
+            x["relevance_score"],
+            x.get("rating", 0),
+        ),
+        reverse=True,
+    )
 
     top = scored[:top_n]
     logger.info("Matched %d products (top %d selected) for query '%s'", len(scored), len(top), query)
-    return top
+    return [
+        {k: v for k, v in product.items() if k not in {"_token_overlap", "_word_overlap"}}
+        for product in top
+    ]

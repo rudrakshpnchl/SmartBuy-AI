@@ -4,6 +4,7 @@ fallback.py - Loads the curated SmartBuy AI mock product catalog.
 import json
 import os
 import logging
+from urllib.parse import quote
 from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
@@ -11,6 +12,29 @@ logger = logging.getLogger(__name__)
 MOCK_DATA_PATH = os.path.join(
     os.path.dirname(__file__), "..", "data", "mock_data.json"
 )
+
+def _placeholder_thumbnail(title: str) -> str:
+    label = quote(title[:48] or "Product")
+    svg = (
+        "<svg xmlns='http://www.w3.org/2000/svg' width='640' height='640' viewBox='0 0 640 640'>"
+        "<defs><linearGradient id='g' x1='0' x2='1' y1='0' y2='1'>"
+        "<stop stop-color='#1f2937'/><stop offset='1' stop-color='#111827'/>"
+        "</linearGradient></defs>"
+        "<rect width='640' height='640' rx='32' fill='url(#g)'/>"
+        "<circle cx='320' cy='240' r='88' fill='#374151'/>"
+        "<rect x='180' y='360' width='280' height='28' rx='14' fill='#6b7280'/>"
+        "<rect x='140' y='410' width='360' height='22' rx='11' fill='#4b5563'/>"
+        f"<text x='320' y='520' text-anchor='middle' font-family='Arial' font-size='28' fill='#e5e7eb'>{label}</text>"
+        "</svg>"
+    )
+    return f"data:image/svg+xml;utf8,{svg}"
+
+
+def _ensure_thumbnail(product: Dict[str, Any]) -> Dict[str, Any]:
+    enriched = dict(product)
+    if not str(enriched.get("thumbnail", "")).strip():
+        enriched["thumbnail"] = _placeholder_thumbnail(str(enriched.get("title", "Product")))
+    return enriched
 
 
 def load_mock_data() -> List[Dict[str, Any]]:
@@ -26,8 +50,8 @@ def load_mock_data() -> List[Dict[str, Any]]:
         for p in products:
             if "currency" not in p:
                 p["currency"] = "USD"
-                
-        return products
+
+        return [_ensure_thumbnail(product) for product in products]
     except FileNotFoundError:
         logger.error("mock_data.json not found at %s", MOCK_DATA_PATH)
         return []

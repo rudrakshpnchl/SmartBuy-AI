@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Search, Sparkles } from 'lucide-react'
+import { Clock3, Search } from 'lucide-react'
 import { useSuggestions } from '../hooks/useSuggestions'
 
 export default function SearchBar({ onSearch, loading }) {
@@ -7,7 +7,11 @@ export default function SearchBar({ onSearch, loading }) {
   const [focused, setFocused] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
   const inputRef = useRef(null)
-  const { suggestions, loading: suggestionsLoading } = useSuggestions(query, focused && !loading)
+  const {
+    suggestions,
+    personalCount,
+    loading: suggestionsLoading,
+  } = useSuggestions(query, focused && !loading)
   const showSuggestions = focused && query.trim() && (suggestionsLoading || suggestions.length > 0)
 
   useEffect(() => {
@@ -145,22 +149,39 @@ export default function SearchBar({ onSearch, loading }) {
               Looking for products that match "{query.trim()}"...
             </div>
           ) : (
-            suggestions.map((suggestion, index) => (
-              <button
-                key={suggestion}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => handleSuggestion(suggestion)}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 text-left
-                  transition-colors text-sm font-body ${
-                    activeIndex === index
-                      ? 'bg-void text-text-primary'
-                      : 'text-text-secondary hover:text-text-primary hover:bg-void'
-                  }`}
-              >
-                <Sparkles size={14} className="text-accent flex-shrink-0" />
-                {suggestion}
-              </button>
-            ))
+            suggestions.map((suggestion, index) => {
+              const isPersonal = index < personalCount
+
+              return (
+                <button
+                  key={suggestion}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handleSuggestion(suggestion)}
+                  className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left
+                    transition-colors text-sm font-body ${
+                      activeIndex === index
+                        ? 'bg-void text-text-primary'
+                        : 'text-text-secondary hover:text-text-primary hover:bg-void'
+                    }`}
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    {isPersonal ? (
+                      <Clock3 size={14} className="text-accent flex-shrink-0" />
+                    ) : (
+                      <Search size={14} className="text-text-muted flex-shrink-0" />
+                    )}
+                    <span className={isPersonal ? 'text-text-primary' : 'text-text-secondary'}>
+                      {suggestion}
+                    </span>
+                  </span>
+                  {isPersonal ? (
+                    <span className="flex-shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent">
+                      Your search
+                    </span>
+                  ) : null}
+                </button>
+              )
+            })
           )}
         </div>
       )}
