@@ -69,13 +69,8 @@ export default function ProductCard({ product, rank, isBest, style }) {
       )}
 
       {/* Header */}
-<<<<<<< HEAD
-      {thumbnail && (
-        <div className="mb-2 overflow-hidden rounded-xl border border-border bg-void/60">
-=======
       {showImage ? (
         <div className="mb-4 overflow-hidden rounded-xl border border-border bg-void/60">
->>>>>>> 51c6b14 (SmartBuy AI — history, feed, personalized suggestions, 40-result search)
           <img
             src={thumbnail}
             alt={title}

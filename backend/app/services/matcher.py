@@ -78,12 +78,7 @@ def match_products(
     candidates = []
     for p in products:
         title_tokens = _tokenize(p.get("title", ""))
-<<<<<<< HEAD
-        overlap = len(query_tokens & title_tokens) / len(query_tokens) if title_tokens else 0.0
-        if overlap < 0.50:
-=======
         if not title_tokens:
->>>>>>> 51c6b14 (SmartBuy AI — history, feed, personalized suggestions, 40-result search)
             continue
 
         word_overlap_count = len(query_word_tokens & _word_tokens(title_tokens))

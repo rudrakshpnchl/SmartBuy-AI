@@ -405,12 +405,8 @@ async def search(body: SearchRequest) -> SearchResponse:
         raise HTTPException(status_code=500, detail="Products could not be processed.")
 
     # ── Step 4: Match (rank only relevant products) ─────────────────────────
-<<<<<<< HEAD
-    top_products = match_products(normalized, query, top_n=25)
-=======
     top_products = match_products(normalized, query, top_n=60)
     logger.info("Matched %d ranked products for '%s'", len(top_products), query)
->>>>>>> 51c6b14 (SmartBuy AI — history, feed, personalized suggestions, 40-result search)
     if not top_products:
         raise HTTPException(status_code=404, detail="No matching products found for this query.")
 

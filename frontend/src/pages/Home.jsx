@@ -58,32 +58,6 @@ export default function Home() {
     }
   }, [result]) // reset when new result comes
 
-<<<<<<< HEAD
-  // Detect if any filters are actively narrowing down results
-  const filtersActive = useMemo(() => {
-    if (filters.minRating > 0) return true
-    if (filters.inStockOnly) return true
-    if (filters.priceRange.min !== '') return true
-    if (filters.priceRange.max !== '') return true
-    if (availableSources.length > 0 && Object.values(filters.sources).some(v => !v)) return true
-    return false
-  }, [filters, availableSources])
-
-  // Compute filtered & sorted alternatives
-  const filteredAlternatives = useMemo(() => {
-    if (!result?.results) return []
-
-    // 1. Filter
-    let filtered = result.results.filter((product) => {
-      // Exclude AI best pick entirely from this list to prevent duplication
-      if (result.best && product.title === result.best.title && product.url === result.best.url) {
-        return false
-      }
-      
-      if (Object.keys(filters.sources).length > 0 && !filters.sources[product.source]) return false
-      if (filters.inStockOnly && !product.in_stock) return false
-      if ((product.rating || 0) < filters.minRating) return false
-=======
   const productPassesFilters = (product) => {
     if (!product) return false
 
@@ -108,7 +82,6 @@ export default function Home() {
     if (!result?.results) return []
 
     const filtered = result.results.filter(productPassesFilters)
->>>>>>> 51c6b14 (SmartBuy AI — history, feed, personalized suggestions, 40-result search)
 
     filtered.sort((a, b) => {
       if (sortOrder === 'price_asc') return a.price - b.price
@@ -120,32 +93,10 @@ export default function Home() {
     return filtered
   }, [result, filters, sortOrder])
 
-<<<<<<< HEAD
-  // Extract the absolute best-priced product from active filters
-  const displayBestPricePick = useMemo(() => {
-    if (!filtersActive || filteredAlternatives.length === 0) return null
-    return filteredAlternatives.reduce((min, p) => p.price < min.price ? p : min, filteredAlternatives[0])
-  }, [filteredAlternatives, filtersActive])
-
-  // Remaining grid minus the selected best price pick (to avoid rendering twice)
-  const finalGridAlternatives = useMemo(() => {
-    if (!displayBestPricePick) return filteredAlternatives
-    return filteredAlternatives.filter(p => p.url !== displayBestPricePick.url || p.title !== displayBestPricePick.title)
-  }, [filteredAlternatives, displayBestPricePick])
-
-  // Check if AI Best Pick matches current filters
-  const showBestPick = useMemo(() => {
-    if (!result?.best) return false
-    const product = result.best
-    if (Object.keys(filters.sources).length > 0 && !filters.sources[product.source]) return false
-    if (filters.inStockOnly && !product.in_stock) return false
-    if ((product.rating || 0) < filters.minRating) return false
-=======
   const showBestPick = useMemo(
     () => Boolean(result?.best && productPassesFilters(result.best)),
     [result, filters],
   )
->>>>>>> 51c6b14 (SmartBuy AI — history, feed, personalized suggestions, 40-result search)
 
   const filteredAlternatives = useMemo(() => {
     if (!filteredProducts.length) return []
