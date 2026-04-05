@@ -9,7 +9,11 @@ export function useHistory() {
   const [loading, setLoading] = useState(false)
 
   const fetchHistory = useCallback(async () => {
-    if (!currentUser) return
+    if (!currentUser) {
+      setHistory([])
+      setLoading(false)
+      return
+    }
 
     setLoading(true)
     try {
@@ -18,14 +22,18 @@ export function useHistory() {
         headers: { Authorization: `Bearer ${token}` },
       })
 
+      if (res.status === 401 || res.status === 403) {
+        setHistory([])
+        return
+      }
+
       if (!res.ok) {
         throw new Error(`History request failed with ${res.status}`)
       }
 
       const data = await res.json()
       setHistory(Array.isArray(data.history) ? data.history : [])
-    } catch (e) {
-      console.error('Failed to fetch history', e)
+    } catch {
       setHistory([])
     } finally {
       setLoading(false)

@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+from app.services.fallback import get_fallback_products
+
 logger = logging.getLogger(__name__)
 
 SERPAPI_ENDPOINT = "https://serpapi.com/search.json"
@@ -166,16 +168,48 @@ def derive_title_suggestions(query: str, products: List[Dict[str, Any]], limit: 
 
         words = title.split()
         for index in range(len(words)):
-            leading_word = _normalize_text(words[index]).lower()
-            if not leading_word.startswith(normalized_query_lower):
-                continue
-
-            candidate = " ".join(words[index:index + 3]).strip(" -_,")
-            if candidate:
-                candidates.append(candidate)
+            max_prefix_span = min(3, len(words) - index)
+            prefix_matches = any(
+                " ".join(words[index:index + span]).lower().startswith(normalized_query_lower)
+                for span in range(1, max_prefix_span + 1)
+            )
+            if prefix_matches:
+                candidate = " ".join(words[index:index + 3]).strip(" -_,")
+                if candidate:
+                    candidates.append(candidate)
                 break
 
     return _dedupe_suggestions(candidates, limit)
+
+
+def _fallback_search_result(query: str, error: str) -> Dict[str, Any]:
+    products = get_fallback_products(query)
+    if products:
+        logger.info(
+            "Using mock catalog fallback for '%s' with %d products. Reason: %s",
+            query,
+            len(products),
+            error,
+        )
+        return {"products": products, "source": "mock", "error": error}
+
+    logger.warning("Mock catalog fallback returned no products for '%s'.", query)
+    return {"products": [], "source": "unavailable", "error": error}
+
+
+def _fallback_suggestions(query: str, limit: int, error: str) -> Dict[str, Any]:
+    suggestions = derive_title_suggestions(query, get_fallback_products(query), limit=limit)
+    logger.info(
+        "Using mock autocomplete fallback for '%s' with %d suggestions. Reason: %s",
+        query,
+        len(suggestions),
+        error,
+    )
+    return {
+        "suggestions": suggestions,
+        "source": "mock",
+        "error": None if suggestions else error,
+    }
 
 
 async def get_autocomplete_suggestions(query: str, limit: int = 6) -> Dict[str, Any]:
@@ -184,8 +218,8 @@ async def get_autocomplete_suggestions(query: str, limit: int = 6) -> Dict[str, 
     """
     api_key = _get_serpapi_api_key()
     if not api_key or api_key in PLACEHOLDER_API_KEYS:
-        logger.info("SERPAPI_API_KEY not configured; skipping autocomplete search.")
-        return {"suggestions": [], "source": "unavailable", "error": "SerpApi key not configured"}
+        logger.info("SERPAPI_API_KEY not configured; using mock autocomplete fallback.")
+        return _fallback_suggestions(query, limit, "SerpApi key not configured")
 
     params = {
         "engine": "google_autocomplete",
@@ -221,12 +255,13 @@ async def get_autocomplete_suggestions(query: str, limit: int = 6) -> Dict[str, 
         return {"suggestions": suggestions, "source": "google-autocomplete", "error": None}
     except httpx.HTTPStatusError as exc:
         logger.error("SerpApi autocomplete HTTP error %s: %s", exc.response.status_code, exc.response.text)
+        return _fallback_suggestions(query, limit, "SerpApi autocomplete failed")
     except httpx.RequestError as exc:
         logger.error("SerpApi autocomplete request error: %s", exc)
+        return _fallback_suggestions(query, limit, "SerpApi autocomplete failed")
     except ValueError as exc:
         logger.error("Failed to parse SerpApi autocomplete response: %s", exc)
-
-    return {"suggestions": [], "source": "unavailable", "error": "SerpApi autocomplete failed"}
+        return _fallback_suggestions(query, limit, "SerpApi autocomplete failed")
 
 
 async def search_google_shopping(query: str, limit: int = 60) -> Dict[str, Any]:
@@ -235,8 +270,8 @@ async def search_google_shopping(query: str, limit: int = 60) -> Dict[str, Any]:
     """
     api_key = _get_serpapi_api_key()
     if not api_key or api_key in PLACEHOLDER_API_KEYS:
-        logger.info("SERPAPI_API_KEY not configured; skipping live shopping search.")
-        return {"products": [], "source": "unavailable", "error": "SerpApi key not configured"}
+        logger.info("SERPAPI_API_KEY not configured; using mock catalog fallback.")
+        return _fallback_search_result(query, "SerpApi key not configured")
 
     params = {
         "engine": "google_shopping",
@@ -282,12 +317,16 @@ async def search_google_shopping(query: str, limit: int = 60) -> Dict[str, Any]:
             query,
             missing_thumbnails,
         )
+        if not normalized_products:
+            return _fallback_search_result(query, "No live shopping results found")
+
         return {"products": normalized_products, "source": "google-shopping", "error": None}
     except httpx.HTTPStatusError as exc:
         logger.error("SerpApi HTTP error %s: %s", exc.response.status_code, exc.response.text)
+        return _fallback_search_result(query, "SerpApi request failed")
     except httpx.RequestError as exc:
         logger.error("SerpApi request error: %s", exc)
+        return _fallback_search_result(query, "SerpApi request failed")
     except ValueError as exc:
         logger.error("Failed to parse SerpApi response: %s", exc)
-
-    return {"products": [], "source": "unavailable", "error": "SerpApi request failed"}
+        return _fallback_search_result(query, "SerpApi request failed")

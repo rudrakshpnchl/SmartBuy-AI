@@ -22,14 +22,18 @@ export function useFeed() {
         headers: { Authorization: `Bearer ${token}` },
       })
 
+      if (response.status === 401 || response.status === 403) {
+        setItems([])
+        return
+      }
+
       if (!response.ok) {
         throw new Error(`Feed request failed with ${response.status}`)
       }
 
       const data = await response.json()
       setItems(Array.isArray(data.items) ? data.items : [])
-    } catch (error) {
-      console.error('Failed to fetch feed', error)
+    } catch {
       setItems([])
     } finally {
       setLoading(false)

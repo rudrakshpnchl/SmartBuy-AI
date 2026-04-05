@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { AlertTriangle, FilterX, Tag } from 'lucide-react'
+import { AlertTriangle, FilterX } from 'lucide-react'
 import { useSearch } from '../hooks/useSearch'
 import HeroHeader from '../components/HeroHeader'
 import SearchBar from '../components/SearchBar'
@@ -12,6 +12,12 @@ import FilterSidebar from '../components/FilterSidebar'
 export default function Home() {
   const { search, loading, result, error } = useSearch()
   const [recentSearchRefreshKey, setRecentSearchRefreshKey] = useState(0)
+
+  const isSameProduct = (left, right) => (
+    Boolean(left && right)
+    && left.title === right.title
+    && left.url === right.url
+  )
   
   const isMockSource = result && ['mock', 'fallback'].includes(result.data_source)
   const sourceLabel = isMockSource
@@ -56,7 +62,7 @@ export default function Home() {
     if (availableSources.length > 0) {
       resetFilters(availableSources)
     }
-  }, [result]) // reset when new result comes
+  }, [availableSources]) // reset when the available sources change
 
   const productPassesFilters = (product) => {
     if (!product) return false
@@ -104,10 +110,23 @@ export default function Home() {
       return filteredProducts
     }
 
-    return filteredProducts.filter((product) => (
-      !(product.title === result.best.title && product.url === result.best.url)
-    ))
+    return filteredProducts.filter((product) => !isSameProduct(product, result.best))
   }, [filteredProducts, result, showBestPick])
+
+  const displayBestPricePick = useMemo(() => {
+    const candidates = showBestPick ? filteredAlternatives : filteredProducts
+    if (!candidates.length) return null
+
+    return [...candidates].sort((a, b) => (a.price || 0) - (b.price || 0))[0] ?? null
+  }, [filteredAlternatives, filteredProducts, showBestPick])
+
+  const finalGridAlternatives = useMemo(() => {
+    if (!displayBestPricePick) {
+      return filteredAlternatives
+    }
+
+    return filteredAlternatives.filter((product) => !isSameProduct(product, displayBestPricePick))
+  }, [displayBestPricePick, filteredAlternatives])
 
   const handleSearch = async (query) => {
     await search(query)
@@ -243,8 +262,8 @@ export default function Home() {
                     <div className="max-w-md">
                       <ProductCard
                         product={displayBestPricePick}
-                        rank={"$" /* arbitrary rank icon replacement or string for best price */}
-                        isBest={false} // Use false to keep it visually distinct from AI best pick, or modify styling
+                        rank={showBestPick ? 2 : 1}
+                        isBest={false}
                         style={{ borderColor: '#34d399', boxShadow: '0 0 20px rgba(52, 211, 153, 0.1)' }}
                       />
                     </div>

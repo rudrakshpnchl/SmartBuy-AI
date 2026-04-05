@@ -4,6 +4,7 @@ Orchestrates the SmartBuy AI search pipeline:
   query → live shopping search → normalize → match → AI decision → response
 """
 import asyncio
+import firebase_admin
 import logging
 import time
 import hashlib
@@ -112,6 +113,14 @@ def _serialize_timestamp(value: Any) -> str:
     return str(value)
 
 
+def _firebase_enabled() -> bool:
+    try:
+        firebase_admin.get_app()
+        return True
+    except ValueError:
+        return False
+
+
 def get_verified_uid(authorization: str | None = Header(default=None)) -> str:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
@@ -126,6 +135,12 @@ def get_verified_uid(authorization: str | None = Header(default=None)) -> str:
         raise HTTPException(status_code=401, detail="Invalid token") from exc
     except Exception as exc:
         raise HTTPException(status_code=401, detail="Token verification failed") from exc
+
+
+def get_optional_verified_uid(authorization: str | None = Header(default=None)) -> str | None:
+    if not _firebase_enabled():
+        return None
+    return get_verified_uid(authorization)
 
 
 def _get_personalized_suggestions(uid: str, query: str, limit: int) -> list[str]:
@@ -243,7 +258,7 @@ async def suggestions(
 
     personalized = []
     personalized_enabled = False
-    if authorization and authorization.startswith("Bearer "):
+    if _firebase_enabled() and authorization and authorization.startswith("Bearer "):
         try:
             token = authorization.removeprefix("Bearer ").strip()
             decoded = firebase_auth.verify_id_token(token)
@@ -294,7 +309,10 @@ async def suggestions(
 
 
 @router.get("/feed", response_model=FeedResponse)
-async def feed(uid: str = Depends(get_verified_uid)) -> FeedResponse:
+async def feed(uid: str | None = Depends(get_optional_verified_uid)) -> FeedResponse:
+    if uid is None:
+        return FeedResponse(items=[])
+
     try:
         docs = (
             _history_collection(uid)
@@ -330,8 +348,11 @@ async def feed(uid: str = Depends(get_verified_uid)) -> FeedResponse:
 @router.post("/history")
 async def save_search(
     payload: HistoryPayload,
-    uid: str = Depends(get_verified_uid),
+    uid: str | None = Depends(get_optional_verified_uid),
 ) -> Dict[str, str]:
+    if uid is None:
+        return {"status": "ok"}
+
     query = _normalize_history_query(payload.query)
     doc_id = hashlib.sha256(f"{uid}:{query}".encode()).hexdigest()[:32]
 
@@ -351,7 +372,10 @@ async def save_search(
 
 
 @router.get("/history")
-async def get_history(uid: str = Depends(get_verified_uid)) -> Dict[str, list[Dict[str, Any]]]:
+async def get_history(uid: str | None = Depends(get_optional_verified_uid)) -> Dict[str, list[Dict[str, Any]]]:
+    if uid is None:
+        return {"history": []}
+
     try:
         docs = (
             _history_collection(uid)
@@ -380,7 +404,7 @@ async def search(body: SearchRequest) -> SearchResponse:
     query = body.query
     logger.info("Search request: '%s'", query)
 
-    # ── Step 1: Search live Google Shopping results ──────────────────────────
+    # ── Step 1: Search live Google Shopping results (with mock fallback) ───
     search_result = await search_google_shopping(query, limit=60)
     raw_products = search_result["products"]
     data_source = search_result["source"]
@@ -393,9 +417,15 @@ async def search(body: SearchRequest) -> SearchResponse:
     )
 
     if not raw_products:
+        status_code = 404 if data_source in {"google-shopping", "mock", "fallback"} else 503
+        detail = (
+            "No products found for this query."
+            if status_code == 404
+            else search_result.get("error") or "Live product search is currently unavailable."
+        )
         raise HTTPException(
-            status_code=503,
-            detail=search_result.get("error") or "Live product search is currently unavailable.",
+            status_code=status_code,
+            detail=detail,
         )
 
     # ── Step 3: Normalize ────────────────────────────────────────────────────
