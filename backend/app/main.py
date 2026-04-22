@@ -30,6 +30,22 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Networking
+# ---------------------------------------------------------------------------
+def get_allowed_origins() -> list[str]:
+    configured = os.getenv(
+        "FRONTEND_ORIGINS",
+        "http://localhost:3000,https://smartbuy-ai-shop.vercel.app",
+    )
+    origins = []
+    for origin in configured.split(","):
+        normalized = origin.strip().rstrip("/")
+        if normalized and normalized not in origins:
+            origins.append(normalized)
+    return origins
+
+
+# ---------------------------------------------------------------------------
 # Firebase
 # ---------------------------------------------------------------------------
 def initialize_firebase() -> bool:
@@ -109,7 +125,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://smartbuy-ai-shop.vercel.app/"],
+    allow_origins=get_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

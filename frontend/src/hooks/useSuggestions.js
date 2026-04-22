@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { apiUrl } from '../lib/api'
 import { getLocalSuggestions } from '../lib/localHistory'
-
-const API_BASE = '/api'
 
 export function useSuggestions(query, enabled) {
   const { currentUser } = useAuth()
@@ -37,7 +36,7 @@ export function useSuggestions(query, enabled) {
         }
 
         const response = await fetch(
-          `${API_BASE}/suggestions?${params.toString()}`,
+          `${apiUrl('/suggestions')}?${params.toString()}`,
           { headers, signal: controller.signal },
         )
 

@@ -1,8 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { apiUrl } from '../lib/api'
 import { saveLocalFeedEntry, saveLocalHistoryEntry } from '../lib/localHistory'
-
-const API_BASE = '/api'
 
 function normalizeErrorMessage(payload, status) {
   const visit = (value) => {
@@ -42,7 +41,7 @@ export function useSearch() {
     setError(null)
 
     try {
-      const res = await fetch(`${API_BASE}/search`, {
+      const res = await fetch(apiUrl('/search'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: trimmedQuery }),
@@ -73,7 +72,7 @@ export function useSearch() {
 
       if (currentUser?.uid) {
         const token = await currentUser.getIdToken()
-        await fetch(`${API_BASE}/history`, {
+        await fetch(apiUrl('/history'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

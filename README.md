@@ -96,10 +96,24 @@ Backend runs on `http://localhost:8000`.
 cd frontend
 
 npm install
+cp .env.example .env
+# Set VITE_API_URL to your backend base URL ending in /api
+# Example local dev:
+#   VITE_API_URL=http://localhost:8000/api
 npm run dev
 ```
 
 Frontend runs on `http://localhost:3000`.
+
+When you deploy the frontend separately from the backend, set `VITE_API_URL`
+to your deployed backend URL including the `/api` prefix.
+
+For direct browser-to-backend requests, configure backend CORS with
+`FRONTEND_ORIGINS`, for example:
+
+```env
+FRONTEND_ORIGINS=http://localhost:3000,https://your-frontend-domain.com
+```
 
 ## API
 

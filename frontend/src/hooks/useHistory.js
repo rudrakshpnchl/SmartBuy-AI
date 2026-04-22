@@ -1,8 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { apiUrl } from '../lib/api'
 import { mergeHistoryEntries, readLocalHistory } from '../lib/localHistory'
-
-const API_BASE = '/api'
 
 export function useHistory() {
   const { currentUser } = useAuth()
@@ -21,7 +20,7 @@ export function useHistory() {
     setLoading(true)
     try {
       const token = await currentUser.getIdToken()
-      const res = await fetch(`${API_BASE}/history`, {
+      const res = await fetch(apiUrl('/history'), {
         headers: { Authorization: `Bearer ${token}` },
       })
 

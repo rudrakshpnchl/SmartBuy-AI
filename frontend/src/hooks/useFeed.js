@@ -1,8 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { apiUrl } from '../lib/api'
 import { mergeFeedItems, readLocalFeed } from '../lib/localHistory'
-
-const API_BASE = '/api'
 
 export function useFeed() {
   const { currentUser } = useAuth()
@@ -21,7 +20,7 @@ export function useFeed() {
     setLoading(true)
     try {
       const token = await currentUser.getIdToken()
-      const response = await fetch(`${API_BASE}/feed`, {
+      const response = await fetch(apiUrl('/feed'), {
         headers: { Authorization: `Bearer ${token}` },
       })
 
