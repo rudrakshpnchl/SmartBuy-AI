@@ -131,7 +131,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(search_router, prefix="/api")
+app.include_router(search_router)
 
 
 @app.get("/health")
