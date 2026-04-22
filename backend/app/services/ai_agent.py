@@ -1,6 +1,6 @@
 """
-ai_agent.py - AI Decision Engine using Anthropic Claude API.
-Sends top matched products to Claude and returns best pick + reasoning.
+ai_agent.py - AI Decision Engine using the Gemini API.
+Sends top matched products to Gemini and returns best pick + reasoning.
 Falls back to rule-based decision if API key is missing.
 """
 import json
@@ -14,9 +14,18 @@ from app.services.currency import format_inr_amount
 
 logger = logging.getLogger(__name__)
 
-ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
-ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
-PLACEHOLDER_API_KEYS = {"your_anthropic_api_key_here"}
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+GEMINI_MODEL = "gemini-2.5-flash"
+PLACEHOLDER_API_KEYS = {"your_gemini_api_key_here"}
+ALLOWED_REASONING_TOKENS = {
+    "a", "an", "and", "as", "at", "best", "better", "between", "by", "choice", "compare",
+    "compared", "cost", "costs", "days", "delivers", "delivery", "for", "from", "good",
+    "has", "higher", "in", "is", "it", "its", "less", "lower", "more", "most", "of",
+    "offers", "on", "option", "overall", "over", "pick", "price", "priced", "priced",
+    "rating", "rated", "safer", "selected", "shipping", "slightly", "solid", "source",
+    "stock", "strong", "than", "the", "this", "trade", "tradeoffs", "value", "while",
+    "with", "alternative", "alternatives", "availability", "available", "balanced",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +73,23 @@ def _rule_based_decision(products: List[Dict[str, Any]]) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def _build_prompt(products: List[Dict[str, Any]], query: str) -> str:
-    products_json = json.dumps(products, indent=2)
+    candidate_rows = []
+    for product in products:
+        candidate_rows.append({
+            "candidate_id": product.get("_candidate_id"),
+            "title": product.get("title"),
+            "price": product.get("price"),
+            "currency": product.get("currency"),
+            "rating": product.get("rating"),
+            "source": product.get("source"),
+            "delivery": product.get("delivery"),
+            "reviews_count": product.get("reviews_count"),
+            "in_stock": product.get("in_stock"),
+            "snippet": product.get("snippet"),
+            "relevance_score": product.get("relevance_score"),
+        })
+
+    products_json = json.dumps(candidate_rows, indent=2)
     return f"""You are a smart product recommendation assistant.
 
 User searched for: "{query}"
@@ -79,12 +104,39 @@ Your task:
 3. Select the BEST option for the user.
 4. Provide a concise explanation (2-4 sentences) of why it's the best choice.
 5. Mention what trade-offs the alternatives offer.
+6. Use ONLY the facts present in the candidate list. Do not infer missing specs or features.
 
 Respond ONLY with valid JSON in this exact format:
 {{
-  "best_product_title": "exact title string from the list",
+  "best_candidate_id": "candidate_id from the list",
   "reasoning": "Your explanation here"
 }}"""
+
+
+def _tokenize_reasoning(text: str) -> set[str]:
+    import re
+
+    return set(re.findall(r"[a-z0-9]+", text.lower()))
+
+
+def _reasoning_is_grounded(reasoning: str, products: List[Dict[str, Any]], query: str) -> bool:
+    context_tokens = _tokenize_reasoning(query)
+    for product in products:
+        context_tokens.update(_tokenize_reasoning(product.get("title", "")))
+        context_tokens.update(_tokenize_reasoning(product.get("source", "")))
+        context_tokens.update(_tokenize_reasoning(product.get("delivery", "")))
+        context_tokens.update(_tokenize_reasoning(product.get("snippet", "")))
+        context_tokens.update(_tokenize_reasoning(str(product.get("price", ""))))
+        context_tokens.update(_tokenize_reasoning(str(product.get("rating", ""))))
+        context_tokens.update(_tokenize_reasoning(str(product.get("reviews_count", ""))))
+        context_tokens.update(_tokenize_reasoning("in stock" if product.get("in_stock") else "out of stock"))
+
+    reasoning_tokens = _tokenize_reasoning(reasoning)
+    unknown_tokens = {
+        token for token in reasoning_tokens
+        if len(token) > 4 and token not in context_tokens and token not in ALLOWED_REASONING_TOKENS
+    }
+    return not unknown_tokens
 
 
 async def run_ai_decision(
@@ -92,36 +144,58 @@ async def run_ai_decision(
     query: str,
 ) -> Dict[str, Any]:
     """
-    Call Anthropic Claude to pick the best product and explain why.
-    Returns rule-based result if ANTHROPIC_API_KEY is not set.
+    Call Gemini to pick the best product and explain why.
+    Returns rule-based result if GEMINI_API_KEY is not set.
     """
-    api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key or api_key in PLACEHOLDER_API_KEYS:
-        logger.info("ANTHROPIC_API_KEY not configured – using rule-based decision.")
+        logger.info("GEMINI_API_KEY not configured – using rule-based decision.")
         return _rule_based_decision(products)
 
     prompt = _build_prompt(products, query)
 
     payload = {
-        "model": ANTHROPIC_MODEL,
-        "max_tokens": 512,
-        "messages": [{"role": "user", "content": prompt}],
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": prompt}],
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": 512,
+            "responseMimeType": "application/json",
+        },
     }
 
     headers = {
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
+        "x-goog-api-key": api_key,
         "content-type": "application/json",
     }
 
     try:
         timeout = httpx.Timeout(connect=3.0, read=15.0, write=10.0, pool=5.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(ANTHROPIC_API_URL, json=payload, headers=headers)
+            response = await client.post(
+                GEMINI_API_URL.format(model=GEMINI_MODEL),
+                json=payload,
+                headers=headers,
+            )
             response.raise_for_status()
 
         data = response.json()
-        raw_text = data["content"][0]["text"].strip()
+        candidates = data.get("candidates") or []
+        parts = (((candidates[0] or {}).get("content") or {}).get("parts")) if candidates else None
+        raw_text = next(
+            (
+                part.get("text", "").strip()
+                for part in (parts or [])
+                if isinstance(part, dict) and part.get("text")
+            ),
+            "",
+        )
+        if not raw_text:
+            raise KeyError("Gemini response did not include text content.")
 
         # Strip markdown code fences if present
         if raw_text.startswith("```"):
@@ -130,26 +204,32 @@ async def run_ai_decision(
                 raw_text = raw_text[4:]
 
         ai_result = json.loads(raw_text)
-        best_title = ai_result.get("best_product_title", "")
+        best_candidate_id = str(ai_result.get("best_candidate_id", "")).strip()
         reasoning = ai_result.get("reasoning", "No reasoning provided.")
+        if not best_candidate_id:
+            raise KeyError("Gemini response did not include best_candidate_id.")
+        if not _reasoning_is_grounded(reasoning, products, query):
+            raise ValueError("Gemini reasoning included unsupported facts.")
 
         # Find matching product object
         best_product = next(
-            (p for p in products if p["title"].lower() == best_title.lower()),
-            products[0],  # fallback to first if title doesn't match exactly
+            (p for p in products if p.get("_candidate_id") == best_candidate_id),
+            None,
         )
+        if best_product is None:
+            raise KeyError(f"Unknown candidate ID returned by Gemini: {best_candidate_id}")
 
         return {
             "best_product": best_product,
             "reasoning": reasoning,
-            "source": "claude-ai",
+            "source": "gemini-ai",
         }
 
     except httpx.HTTPStatusError as e:
-        logger.error("Anthropic API HTTP error %s: %s", e.response.status_code, e.response.text)
+        logger.error("Gemini API HTTP error %s: %s", e.response.status_code, e.response.text)
     except httpx.RequestError as e:
-        logger.error("Anthropic API request error: %s", e)
-    except (json.JSONDecodeError, KeyError, IndexError) as e:
+        logger.error("Gemini API request error: %s", e)
+    except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
         logger.error("Failed to parse AI response: %s", e)
 
     logger.info("AI call failed – falling back to rule-based decision.")

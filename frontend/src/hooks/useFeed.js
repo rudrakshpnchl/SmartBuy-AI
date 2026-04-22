@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { mergeFeedItems, readLocalFeed } from '../lib/localHistory'
 
 const API_BASE = '/api'
 
@@ -15,6 +16,8 @@ export function useFeed() {
       return
     }
 
+    const localItems = readLocalFeed(currentUser.uid)
+    setItems(localItems)
     setLoading(true)
     try {
       const token = await currentUser.getIdToken()
@@ -23,7 +26,7 @@ export function useFeed() {
       })
 
       if (response.status === 401 || response.status === 403) {
-        setItems([])
+        setItems(localItems)
         return
       }
 
@@ -32,9 +35,9 @@ export function useFeed() {
       }
 
       const data = await response.json()
-      setItems(Array.isArray(data.items) ? data.items : [])
+      setItems(mergeFeedItems(Array.isArray(data.items) ? data.items : [], localItems))
     } catch {
-      setItems([])
+      setItems(localItems)
     } finally {
       setLoading(false)
     }

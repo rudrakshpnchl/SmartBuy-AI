@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { mergeHistoryEntries, readLocalHistory } from '../lib/localHistory'
 
 const API_BASE = '/api'
 
@@ -15,6 +16,8 @@ export function useHistory() {
       return
     }
 
+    const localHistory = readLocalHistory(currentUser.uid)
+    setHistory(localHistory)
     setLoading(true)
     try {
       const token = await currentUser.getIdToken()
@@ -23,7 +26,7 @@ export function useHistory() {
       })
 
       if (res.status === 401 || res.status === 403) {
-        setHistory([])
+        setHistory(localHistory)
         return
       }
 
@@ -32,9 +35,9 @@ export function useHistory() {
       }
 
       const data = await res.json()
-      setHistory(Array.isArray(data.history) ? data.history : [])
+      setHistory(mergeHistoryEntries(Array.isArray(data.history) ? data.history : [], localHistory))
     } catch {
-      setHistory([])
+      setHistory(localHistory)
     } finally {
       setLoading(false)
     }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { getLocalSuggestions } from '../lib/localHistory'
 
 const API_BASE = '/api'
 
@@ -22,6 +23,9 @@ export function useSuggestions(query, enabled) {
 
     const timeoutId = window.setTimeout(async () => {
       setLoading(true)
+      const localSuggestions = currentUser?.uid
+        ? getLocalSuggestions(currentUser.uid, trimmedQuery, 6)
+        : []
 
       try {
         const params = new URLSearchParams({ q: trimmedQuery, limit: '6' })
@@ -42,12 +46,29 @@ export function useSuggestions(query, enabled) {
         }
 
         const data = await response.json()
-        setSuggestions(Array.isArray(data.suggestions) ? data.suggestions : [])
-        setPersonalCount(Number.isInteger(data.personal_count) ? data.personal_count : 0)
+        const merged = []
+        const seen = new Set()
+
+        for (const value of [...localSuggestions, ...(Array.isArray(data.suggestions) ? data.suggestions : [])]) {
+          const normalized = value.trim().toLowerCase()
+          if (!normalized || seen.has(normalized)) {
+            continue
+          }
+
+          seen.add(normalized)
+          merged.push(value.trim())
+
+          if (merged.length >= 6) {
+            break
+          }
+        }
+
+        setSuggestions(merged)
+        setPersonalCount(Math.min(merged.length, localSuggestions.length))
       } catch (error) {
         if (error.name !== 'AbortError') {
-          setSuggestions([])
-          setPersonalCount(0)
+          setSuggestions(localSuggestions)
+          setPersonalCount(localSuggestions.length)
         }
       } finally {
         if (!controller.signal.aborted) {

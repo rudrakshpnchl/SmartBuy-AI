@@ -35,7 +35,7 @@ smartbuy-ai/
 │   │   │   ├── currency.py          # USD → INR conversion helpers
 │   │   │   ├── normalizer.py        # clean and validate product dicts
 │   │   │   ├── matcher.py           # relevance ranking
-│   │   │   └── ai_agent.py          # Anthropic Claude / rule-based decision
+│   │   │   └── ai_agent.py          # Gemini / rule-based decision
 │   │   └── data/
 │   │       └── mock_data.json
 │   ├── requirements.txt
@@ -67,7 +67,7 @@ smartbuy-ai/
 - Python 3.11+
 - Node.js 18+
 - A SerpApi key for live Google Shopping search
-- Optional: an Anthropic API key for Claude reasoning
+- Optional: a Gemini API key for Gemini reasoning
 
 ### Backend
 
@@ -82,7 +82,7 @@ cp .env.example .env
 # Required for live results:
 #   SERPAPI_API_KEY=...
 # Optional:
-#   ANTHROPIC_API_KEY=...
+#   GEMINI_API_KEY=your_gemini_api_key_here
 #   USD_TO_INR_RATE=92.40
 
 python run.py
@@ -172,7 +172,7 @@ Returns:
 
 | Mode | When active | How it works |
 |------|-------------|--------------|
-| Claude AI | `ANTHROPIC_API_KEY` set | Sends matched products to Anthropic and returns the chosen product plus reasoning |
+| Gemini AI | `GEMINI_API_KEY` set | Sends matched products to Gemini and returns the chosen product plus reasoning |
 | Rule-based | No AI key configured or AI call fails | Scores products using relevance, rating, and relative price |
 
 ## Notes

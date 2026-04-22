@@ -11,13 +11,16 @@ import hashlib
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import JSONResponse
 from firebase_admin import auth as firebase_auth, firestore
 from pydantic import BaseModel, field_validator
 
 from app.services.currency import DEFAULT_CURRENCY, get_usd_to_inr_rate
+from app.services.fallback import get_mock_products
 from app.services.normalizer import normalize_products
 from app.services.matcher import match_products
 from app.services.ai_agent import run_ai_decision
+from app.services.query_resolution import build_search_suggestions, resolve_query_correction
 from app.services.shopping_search import (
     get_autocomplete_suggestions,
     search_google_shopping,
@@ -47,6 +50,8 @@ class SearchRequest(BaseModel):
 
 class SearchResponse(BaseModel):
     query: str
+    original_query: str
+    correction: Dict[str, Any] | None
     best: Dict[str, Any]
     results: list
     explanation: str
@@ -204,6 +209,22 @@ async def _build_feed_item(query: str) -> Dict[str, Any] | None:
         "product": _clean_product_payload(top_products[0]),
         "data_source": data_source,
         "cached_at": int(time.time()),
+    }
+
+
+async def _execute_search_attempt(query: str) -> Dict[str, Any]:
+    search_result = await search_google_shopping(query, limit=60)
+    raw_products = search_result["products"]
+    data_source = search_result["source"]
+    normalized_products = normalize_products(raw_products) if raw_products else []
+    top_products = match_products(normalized_products, query, top_n=60) if normalized_products else []
+    return {
+        "query": query,
+        "search_result": search_result,
+        "raw_products": raw_products,
+        "data_source": data_source,
+        "normalized_products": normalized_products,
+        "top_products": top_products,
     }
 
 
@@ -401,47 +422,71 @@ async def get_history(uid: str | None = Depends(get_optional_verified_uid)) -> D
 @router.post("/search", response_model=SearchResponse)
 async def search(body: SearchRequest) -> SearchResponse:
     t0 = time.monotonic()
-    query = body.query
-    logger.info("Search request: '%s'", query)
+    original_query = body.query
+    effective_query = original_query
+    logger.info("Search request: '%s'", original_query)
 
-    # ── Step 1: Search live Google Shopping results (with mock fallback) ───
-    search_result = await search_google_shopping(query, limit=60)
-    raw_products = search_result["products"]
-    data_source = search_result["source"]
+    # ── Step 1: Search the original query first ─────────────────────────────
+    search_attempt = await _execute_search_attempt(original_query)
+    data_source = search_attempt["data_source"]
     logger.info(
         "Live search source=%s query='%s' raw_products=%d error=%s",
         data_source,
-        query,
-        len(raw_products),
-        search_result.get("error"),
+        original_query,
+        len(search_attempt["raw_products"]),
+        search_attempt["search_result"].get("error"),
+    )
+    correction = None
+
+    if not search_attempt["top_products"]:
+        autocomplete_result = await get_autocomplete_suggestions(original_query, limit=8, require_prefix=False)
+        correction = resolve_query_correction(
+            original_query,
+            autocomplete_result["suggestions"],
+            catalog_products=get_mock_products(),
+        )
+        if correction:
+            effective_query = correction["corrected_query"]
+            search_attempt = await _execute_search_attempt(effective_query)
+            data_source = search_attempt["data_source"]
+
+        if not search_attempt["top_products"]:
+            status_code = 404 if data_source in {"google-shopping", "mock", "fallback"} else 503
+            detail = (
+                f'No products found for "{original_query}".'
+                if status_code == 404
+                else search_attempt["search_result"].get("error") or "Live product search is currently unavailable."
+            )
+            if status_code != 404:
+                raise HTTPException(status_code=status_code, detail=detail)
+
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "detail": detail,
+                    "original_query": original_query,
+                    "suggestions": build_search_suggestions(
+                        original_query,
+                        correction,
+                        autocomplete_result["suggestions"],
+                    ),
+                },
+            )
+
+    logger.info(
+        "Matched %d ranked products for '%s'",
+        len(search_attempt["top_products"]),
+        effective_query,
     )
 
-    if not raw_products:
-        status_code = 404 if data_source in {"google-shopping", "mock", "fallback"} else 503
-        detail = (
-            "No products found for this query."
-            if status_code == 404
-            else search_result.get("error") or "Live product search is currently unavailable."
-        )
-        raise HTTPException(
-            status_code=status_code,
-            detail=detail,
-        )
-
-    # ── Step 3: Normalize ────────────────────────────────────────────────────
-    normalized = normalize_products(raw_products)
-    logger.info("Normalized %d products for '%s'", len(normalized), query)
-    if not normalized:
-        raise HTTPException(status_code=500, detail="Products could not be processed.")
-
-    # ── Step 4: Match (rank only relevant products) ─────────────────────────
-    top_products = match_products(normalized, query, top_n=60)
-    logger.info("Matched %d ranked products for '%s'", len(top_products), query)
-    if not top_products:
-        raise HTTPException(status_code=404, detail="No matching products found for this query.")
-
     # ── Step 5: AI Decision ──────────────────────────────────────────────────
-    ai_result = await run_ai_decision(top_products, query)
+    top_products_with_ids = []
+    for index, product in enumerate(search_attempt["top_products"], start=1):
+        product_copy = dict(product)
+        product_copy["_candidate_id"] = f"p{index}"
+        top_products_with_ids.append(product_copy)
+
+    ai_result = await run_ai_decision(top_products_with_ids, effective_query)
 
     best = ai_result["best_product"]
     reasoning = ai_result["reasoning"]
@@ -450,7 +495,7 @@ async def search(body: SearchRequest) -> SearchResponse:
     exchange_rate = round(get_usd_to_inr_rate(), 4)
 
     # Remove internal scoring key before returning
-    results_clean = [{k: v for k, v in p.items() if not k.startswith("_")} for p in top_products]
+    results_clean = [{k: v for k, v in p.items() if not k.startswith("_")} for p in top_products_with_ids]
     best_clean = {k: v for k, v in best.items() if not k.startswith("_")}
 
     took_ms = int((time.monotonic() - t0) * 1000)
@@ -460,7 +505,9 @@ async def search(body: SearchRequest) -> SearchResponse:
     )
 
     return SearchResponse(
-        query=query,
+        query=effective_query,
+        original_query=original_query,
+        correction=correction,
         best=best_clean,
         results=results_clean,
         explanation=reasoning,

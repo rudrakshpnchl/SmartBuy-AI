@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Clock3, ExternalLink } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useFeed } from '../hooks/useFeed'
+import ProductImage from './ProductImage'
 
 function formatDate(iso) {
   if (!iso) return 'Recent'
@@ -78,21 +79,14 @@ export default function RecentSearches({ onSearch, refreshKey = 0, hidden = fals
                 bg-surface/80 p-4 text-left transition-all duration-200 hover:-translate-y-0.5
                 hover:border-accent/40 hover:bg-surface hover:shadow-card"
             >
-              {item.product?.thumbnail ? (
-                <div className="overflow-hidden rounded-xl border border-border bg-void/60">
-                  <img
-                    src={item.product.thumbnail}
-                    alt={item.product.title}
-                    className="h-36 w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
-              ) : (
-                <div className="flex h-36 items-center justify-center rounded-xl border border-border bg-void/60">
-                  <Clock3 size={24} className="text-text-muted" />
-                </div>
-              )}
+              <ProductImage
+                src={item.product?.thumbnail}
+                title={item.product?.title || item.query}
+                alt={item.product?.title || item.query}
+                wrapperClassName="overflow-hidden rounded-xl border border-border bg-void/60"
+                imageClassName="h-36 w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                fallbackClassName="flex h-36 items-center justify-center rounded-xl border border-border bg-void/60"
+              />
 
               <div className="flex items-center justify-between gap-3 text-xs">
                 <span className="mt-4 inline-flex items-center gap-2 rounded-full bg-void px-2.5 py-1 text-text-muted">

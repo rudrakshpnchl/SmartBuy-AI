@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from app.services.fallback import get_fallback_products
+from app.services.image_utils import normalize_thumbnail
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +147,7 @@ def _normalize_result(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "reviews_count": _parse_int(result.get("reviews")),
         "rating": _parse_float(result.get("rating")) or 0.0,
         "in_stock": _derive_stock_state(result),
-        "thumbnail": str(result.get("thumbnail", "")).strip(),
+        "thumbnail": normalize_thumbnail(result.get("thumbnail", ""), title),
         "snippet": str(result.get("snippet", "")).strip(),
     }
 
@@ -212,7 +213,7 @@ def _fallback_suggestions(query: str, limit: int, error: str) -> Dict[str, Any]:
     }
 
 
-async def get_autocomplete_suggestions(query: str, limit: int = 6) -> Dict[str, Any]:
+async def get_autocomplete_suggestions(query: str, limit: int = 6, require_prefix: bool = True) -> Dict[str, Any]:
     """
     Fetch live Google autocomplete suggestions from SerpApi.
     """
@@ -247,7 +248,7 @@ async def get_autocomplete_suggestions(query: str, limit: int = 6) -> Dict[str, 
         suggestions = []
         for item in raw_suggestions:
             value = item.get("value") if isinstance(item, dict) else item
-            if _matches_query_prefix(str(value or ""), query):
+            if not require_prefix or _matches_query_prefix(str(value or ""), query):
                 suggestions.append(str(value))
 
         suggestions = _dedupe_suggestions(suggestions, limit)

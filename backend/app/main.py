@@ -1,6 +1,7 @@
 """
 main.py - FastAPI application entry point for SmartBuy AI.
 """
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -15,7 +16,7 @@ from dotenv import load_dotenv
 from app.routes.search import router as search_router
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
-PLACEHOLDER_API_KEYS = {"your_anthropic_api_key_here"}
+PLACEHOLDER_API_KEYS = {"your_gemini_api_key_here"}
 load_dotenv(BACKEND_DIR / ".env")
 
 # ---------------------------------------------------------------------------
@@ -32,6 +33,24 @@ logger = logging.getLogger(__name__)
 # Firebase
 # ---------------------------------------------------------------------------
 def initialize_firebase() -> bool:
+    try:
+        firebase_admin.get_app()
+        logger.info("Firebase Admin: ALREADY INITIALIZED")
+        return True
+    except ValueError:
+        pass
+
+    service_account_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
+    if service_account_json:
+        try:
+            cred = credentials.Certificate(json.loads(service_account_json))
+            firebase_admin.initialize_app(cred)
+            logger.info("Firebase Admin: INITIALIZED FROM FIREBASE_SERVICE_ACCOUNT_JSON")
+            return True
+        except Exception as exc:
+            logger.exception("Firebase Admin JSON initialization failed: %s", exc)
+            return False
+
     service_account_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
     if not service_account_path:
         logger.info("Firebase Admin: NOT CONFIGURED (history + personalized suggestions disabled)")
@@ -44,13 +63,6 @@ def initialize_firebase() -> bool:
     if not key_path.exists():
         logger.warning("Firebase Admin key not found at %s", key_path)
         return False
-
-    try:
-        firebase_admin.get_app()
-        logger.info("Firebase Admin: ALREADY INITIALIZED")
-        return True
-    except ValueError:
-        pass
 
     try:
         cred = credentials.Certificate(str(key_path))
@@ -68,12 +80,12 @@ def initialize_firebase() -> bool:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("SmartBuy AI backend starting...")
-    api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
     api_key_set = bool(api_key) and api_key not in PLACEHOLDER_API_KEYS
     serpapi_key = os.getenv("SERPAPI_API_KEY", "").strip()
     serpapi_key_set = bool(serpapi_key) and serpapi_key != "your_serpapi_api_key_here"
     logger.info(
-        "Anthropic API key: %s",
+        "Gemini API key: %s",
         "SET" if api_key_set else "NOT CONFIGURED (rule-based fallback active)",
     )
     logger.info(

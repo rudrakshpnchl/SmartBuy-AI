@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { AlertTriangle, FilterX } from 'lucide-react'
+import { AlertTriangle, FilterX, Search as SearchIcon, Sparkles } from 'lucide-react'
 import { useSearch } from '../hooks/useSearch'
 import HeroHeader from '../components/HeroHeader'
 import SearchBar from '../components/SearchBar'
@@ -10,8 +10,9 @@ import LoadingSkeleton from '../components/LoadingSkeleton'
 import FilterSidebar from '../components/FilterSidebar'
 
 export default function Home() {
-  const { search, loading, result, error } = useSearch()
+  const { search, loading, result, noResults, error } = useSearch()
   const [recentSearchRefreshKey, setRecentSearchRefreshKey] = useState(0)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const isSameProduct = (left, right) => (
     Boolean(left && right)
@@ -129,7 +130,13 @@ export default function Home() {
   }, [displayBestPricePick, filteredAlternatives])
 
   const handleSearch = async (query) => {
-    await search(query)
+    setSearchQuery(query)
+    const response = await search(query)
+    if (response?.status === 'success') {
+      setSearchQuery(response.data?.query || query)
+    } else if (response?.status === 'no-results') {
+      setSearchQuery(response.data?.original_query || query)
+    }
     setRecentSearchRefreshKey((current) => current + 1)
   }
 
@@ -161,11 +168,16 @@ export default function Home() {
 
         {/* Search */}
         <div className="mb-10 max-w-4xl mx-auto">
-          <SearchBar onSearch={handleSearch} loading={loading} />
+          <SearchBar
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            onSearch={handleSearch}
+            loading={loading}
+          />
           <RecentSearches
             onSearch={handleSearch}
             refreshKey={recentSearchRefreshKey}
-            hidden={loading || Boolean(result)}
+            hidden={loading || Boolean(result) || Boolean(noResults)}
           />
         </div>
 
@@ -184,9 +196,71 @@ export default function Home() {
         {/* Loading */}
         {loading && <LoadingSkeleton />}
 
+        {/* No results state */}
+        {!loading && noResults && (
+          <div className="mx-auto max-w-4xl animate-fade-up rounded-[2rem] border border-border bg-surface/70 p-8 shadow-card">
+            <div className="flex items-start gap-4">
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-void text-accent">
+                <SearchIcon size={22} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-mono uppercase tracking-[0.25em] text-text-muted">
+                  No Results
+                </p>
+                <h2 className="mt-2 font-display text-2xl font-bold text-text-primary">
+                  We couldn&apos;t find products for &quot;{noResults.original_query}&quot;
+                </h2>
+                <p className="mt-3 max-w-2xl text-sm text-text-secondary">
+                  {noResults.detail || 'Try a corrected spelling or pick one of the close matches below.'}
+                </p>
+              </div>
+            </div>
+
+            {noResults.suggestions?.length > 0 ? (
+              <div className="mt-8">
+                <p className="mb-3 flex items-center gap-2 text-xs font-mono uppercase tracking-[0.22em] text-accent">
+                  <Sparkles size={14} />
+                  Try these instead
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  {noResults.suggestions.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => handleSearch(suggestion)}
+                      className="rounded-full border border-accent/30 bg-accent/10 px-4 py-2 text-sm text-text-primary transition-colors hover:border-accent hover:bg-accent/20"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-8 text-sm text-text-muted">
+                Check the spelling, try a shorter product name, or search using a brand + model.
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Results layout */}
         {!loading && result && (
           <div className="space-y-8 animate-fade-up">
+            {result.correction?.applied && (
+              <div className="rounded-2xl border border-accent/30 bg-accent/10 px-5 py-4 text-sm text-text-primary">
+                <span className="font-medium">
+                  Showing results for &quot;{result.query}&quot;.
+                </span>{' '}
+                <button
+                  type="button"
+                  onClick={() => handleSearch(result.original_query)}
+                  className="text-accent underline underline-offset-4 hover:text-accent-light"
+                >
+                  Search instead for &quot;{result.original_query}&quot;
+                </button>
+              </div>
+            )}
+
             {/* Result header */}
             <div className="flex items-center justify-between flex-wrap gap-3 pb-6 border-b border-border">
               <div>
@@ -318,7 +392,7 @@ export default function Home() {
         )}
 
         {/* Empty state (No search) */}
-        {!loading && !result && !error && (
+        {!loading && !result && !noResults && !error && (
           <div className="text-center py-20">
             <div className="text-6xl mb-4 opacity-20">🛒</div>
             <p className="text-text-muted font-body text-sm">

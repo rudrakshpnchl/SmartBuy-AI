@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { saveLocalFeedEntry, saveLocalHistoryEntry } from '../lib/localHistory'
 
 const API_BASE = '/api'
 
@@ -29,6 +30,7 @@ export function useSearch() {
   const { currentUser } = useAuth()
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
+  const [noResults, setNoResults] = useState(null)
   const [error, setError] = useState(null)
 
   const search = useCallback(async (query) => {
@@ -36,6 +38,7 @@ export function useSearch() {
     if (!trimmedQuery) return
     setLoading(true)
     setResult(null)
+    setNoResults(null)
     setError(null)
 
     try {
@@ -45,6 +48,14 @@ export function useSearch() {
         body: JSON.stringify({ query: trimmedQuery }),
       })
 
+      if (res.status === 404) {
+        const payload = await res.json().catch(() => ({}))
+        if (payload && typeof payload === 'object' && Array.isArray(payload.suggestions)) {
+          setNoResults(payload)
+          return { status: 'no-results', data: payload }
+        }
+      }
+
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
         throw new Error(normalizeErrorMessage(errData, res.status))
@@ -52,6 +63,13 @@ export function useSearch() {
 
       const data = await res.json()
       setResult(data)
+      saveLocalHistoryEntry(currentUser?.uid, data.query || trimmedQuery)
+      saveLocalFeedEntry(currentUser?.uid, {
+        query: data.query || trimmedQuery,
+        product: data.best || data.results?.[0] || null,
+        data_source: data.data_source || 'local',
+        cached_at: Math.floor(Date.now() / 1000),
+      })
 
       if (currentUser?.uid) {
         const token = await currentUser.getIdToken()
@@ -61,15 +79,17 @@ export function useSearch() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ query: trimmedQuery }),
+          body: JSON.stringify({ query: data.query || trimmedQuery }),
         }).catch(() => {})
       }
+      return { status: 'success', data }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
+      return { status: 'error', error: err }
     } finally {
       setLoading(false)
     }
   }, [currentUser])
 
-  return { search, loading, result, error }
+  return { search, loading, result, noResults, error }
 }

@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { ExternalLink, ImageIcon, Star, Truck, Package, ShieldCheck } from 'lucide-react'
+import { ExternalLink, Heart, Star, Truck, Package, ShieldCheck } from 'lucide-react'
+import { useWishlist } from '../hooks/useWishlist'
+import ProductImage from './ProductImage'
 
 const formatPrice = (amount, currency = 'INR') =>
   new Intl.NumberFormat('en-IN', {
@@ -32,12 +33,12 @@ function StarRating({ rating }) {
 }
 
 export default function ProductCard({ product, rank, isBest, style }) {
-  const [imageMissing, setImageMissing] = useState(false)
+  const { isWishlisted, toggleWishlist } = useWishlist()
   const {
     title, price, currency, rating, source, url,
     delivery, reviews_count, in_stock, relevance_score, thumbnail, snippet
   } = product
-  const showImage = Boolean(thumbnail) && !imageMissing
+  const wishlisted = isWishlisted(product)
 
   return (
     <article
@@ -62,34 +63,40 @@ export default function ProductCard({ product, rank, isBest, style }) {
 
       {/* Rank badge */}
       {!isBest && (
-        <div className="absolute top-4 right-4 w-7 h-7 rounded-full bg-void border border-border
+        <div className="absolute top-4 left-4 z-10 w-7 h-7 rounded-full bg-void/95 border border-border
           flex items-center justify-center text-xs text-text-muted font-mono">
           #{rank}
         </div>
       )}
 
       {/* Header */}
-      {showImage ? (
-        <div className="mb-4 overflow-hidden rounded-xl border border-border bg-void/60">
-          <img
-            src={thumbnail}
-            alt={title}
-            className="h-32 w-full object-cover"
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            onError={() => setImageMissing(true)}
-          />
-        </div>
-      ) : (
-        <div className="mb-4 flex h-40 items-center justify-center rounded-xl border border-dashed border-border bg-void/60">
-          <div className="flex flex-col items-center gap-2 text-center">
-            <ImageIcon size={22} className="text-text-muted" />
-            <p className="text-xs font-mono uppercase tracking-wider text-text-muted">
-              Image Unavailable
-            </p>
-          </div>
-        </div>
-      )}
+      <div className="relative mb-4">
+        <button
+          type="button"
+          onClick={() => toggleWishlist(product)}
+          className={`
+            absolute right-3 top-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full
+            border backdrop-blur-sm transition-all duration-200
+            ${wishlisted
+              ? 'border-rose-400/50 bg-rose-500/15 text-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.22)]'
+              : 'border-white/15 bg-[#09090dcc] text-white/80 hover:border-rose-300/40 hover:text-rose-300'
+            }
+          `}
+          aria-label={wishlisted ? `Remove ${title} from wishlist` : `Add ${title} to wishlist`}
+          title={wishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+        >
+          <Heart size={18} className={wishlisted ? 'fill-current' : ''} />
+        </button>
+
+        <ProductImage
+          src={thumbnail}
+          title={title}
+          alt={title}
+          wrapperClassName="overflow-hidden rounded-xl border border-border bg-void/60"
+          imageClassName="h-32 w-full object-cover"
+          fallbackClassName="flex h-40 items-center justify-center rounded-xl border border-dashed border-border bg-void/60"
+        />
+      </div>
 
       <div className="mt-1 mb-2">
         <p className="text-[10px] text-text-muted font-mono uppercase tracking-wider mb-1 mt-1">{source}</p>

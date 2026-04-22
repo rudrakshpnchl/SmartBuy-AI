@@ -2,8 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Clock3, Search } from 'lucide-react'
 import { useSuggestions } from '../hooks/useSuggestions'
 
-export default function SearchBar({ onSearch, loading }) {
-  const [query, setQuery] = useState('')
+export default function SearchBar({ query, onQueryChange, onSearch, loading }) {
   const [focused, setFocused] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
   const inputRef = useRef(null)
@@ -32,7 +31,7 @@ export default function SearchBar({ onSearch, loading }) {
   const submitSearch = (value) => {
     const nextQuery = value.trim()
     if (!nextQuery || loading) return
-    setQuery(nextQuery)
+    onQueryChange(nextQuery)
     onSearch(nextQuery)
     setFocused(false)
     setActiveIndex(-1)
@@ -100,7 +99,7 @@ export default function SearchBar({ onSearch, loading }) {
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => onQueryChange(e.target.value)}
             onFocus={() => setFocused(true)}
             onBlur={() => setTimeout(() => setFocused(false), 150)}
             onKeyDown={handleKeyDown}

@@ -2,9 +2,9 @@ import { Brain, Cpu, Database, ChevronDown, ChevronUp } from 'lucide-react'
 import { useState } from 'react'
 
 const SOURCE_META = {
-  'claude-ai': {
+  'gemini-ai': {
     icon: Brain,
-    label: 'Claude AI',
+    label: 'Gemini AI',
     color: 'text-accent',
     badge: 'bg-accent/10 border-accent/30 text-accent',
   },
